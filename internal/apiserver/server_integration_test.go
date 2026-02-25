@@ -62,7 +62,7 @@ var _ = Describe("HTTP Server", func() {
 			logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 		}
 
-		srv := apiserver.New(cfg, logger)
+		srv := apiserver.New(cfg, logger, "0.0.1-test")
 		Expect(srv).NotTo(BeNil(), "New() must return a non-nil server")
 
 		for _, w := range wrappers {
@@ -349,7 +349,7 @@ var _ = Describe("HTTP Server", func() {
 		logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
 
 		cfg := defaultConfig()
-		srv := apiserver.New(cfg, logger).WithOnReady(func(_ context.Context) {
+		srv := apiserver.New(cfg, logger, "0.0.1-test").WithOnReady(func(_ context.Context) {
 			panic("onReady boom")
 		})
 		Expect(srv).NotTo(BeNil())
@@ -388,7 +388,7 @@ var _ = Describe("HTTP Server", func() {
 	It("invokes onReady only after server is serving (TC-I085)", func() {
 		cfg := defaultConfig()
 
-		srv := apiserver.New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))).
+		srv := apiserver.New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil)), "0.0.1-test").
 			WithOnReady(func(_ context.Context) {
 				// Inside onReady, verify that the health endpoint is
 				// already reachable. If the probe works correctly, this
@@ -422,8 +422,6 @@ var _ = Describe("HTTP Server", func() {
 			return nil
 		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
 	})
-
-
 
 	// TC-I079: Shutdown timeout force-terminates hung requests
 	It("force-terminates when shutdown timeout expires (TC-I079)", func() {

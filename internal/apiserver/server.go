@@ -13,6 +13,7 @@ import (
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
+	"github.com/dcm-project/k8s-container-service-provider/internal/health"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/getkin/kin-openapi/routers"
 	legacyrouter "github.com/getkin/kin-openapi/routers/legacy"
@@ -25,14 +26,11 @@ import (
 type apiHandler struct {
 	oapigen.Unimplemented
 	logger *slog.Logger
+	health *health.Handler
 }
 
 func (h *apiHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
-		h.logger.Error("failed to encode health response", "error", err)
-	}
+	h.health.GetHealth(w, r)
 }
 
 // Server is the HTTP server for the container service provider API.
@@ -112,8 +110,11 @@ func (s *Server) waitForReady(ctx context.Context, addr string) error {
 }
 
 // New creates a new Server with the given config and logger.
-func New(cfg *config.Config, logger *slog.Logger) *Server {
-	h := &apiHandler{logger: logger}
+func New(cfg *config.Config, logger *slog.Logger, version string) *Server {
+	h := &apiHandler{
+		logger: logger,
+		health: health.NewHandler(time.Now(), version, logger),
+	}
 	badReq := newBadRequestHandler(logger)
 
 	r := chi.NewRouter()

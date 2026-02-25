@@ -13,6 +13,10 @@ import (
 	"github.com/dcm-project/k8s-container-service-provider/internal/registration"
 )
 
+// version is the application version, set at build time via
+// -ldflags "-X main.version=X.Y.Z".
+var version = "0.0.1-dev"
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
@@ -38,7 +42,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := apiserver.New(cfg, logger).WithOnReady(registrar.Start)
+	srv := apiserver.New(cfg, logger, version).WithOnReady(registrar.Start)
 	if err := srv.Run(ctx, ln); err != nil {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
