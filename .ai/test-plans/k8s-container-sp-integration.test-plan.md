@@ -784,15 +784,15 @@ for full descriptions.
 - **Priority:** High
 - **Type:** Integration
 - **Transitively covers:** TC-U043 (Payload contains all required fields), TC-U044 (Payload includes region and zone metadata)
-- **Given:** Provider config: `name="k8s-sp"`, `displayName="K8s SP"`, `endpoint="https://sp.example.com"`, `region="us-east-1"`, `zone="us-east-1a"`
+- **Given:** Provider config: `name="k8s-sp"`, `display_name="K8s SP"`, `endpoint="https://sp.example.com"`, `region="us-east-1"`, `zone="us-east-1a"`
 - **When:** Registration is sent to the mock server
 - **Then:** Request body contains:
   - `name: "k8s-sp"`
-  - `serviceType: "container"`
-  - `displayName: "K8s SP"`
+  - `service_type: "container"`
+  - `display_name: "K8s SP"`
   - `endpoint: "https://sp.example.com/api/v1alpha1/containers"`
   - `operations: ["CREATE", "DELETE", "READ"]`
-  - `metadata.region: "us-east-1"`
+  - `metadata.region_code: "us-east-1"`
   - `metadata.zone: "us-east-1a"`
 
 ### TC-I055: Registration does not block server startup
@@ -846,9 +846,9 @@ for full descriptions.
 - **Priority:** Medium
 - **Type:** Integration
 - **Transitively covers:** TC-U045 (Payload omits metadata when region and zone not configured)
-- **Given:** Provider config: `name="k8s-sp"`, `displayName="K8s SP"`, `endpoint="https://sp.example.com"` with NO `region` or `zone` configured
+- **Given:** Provider config: `name="k8s-sp"`, `display_name="K8s SP"`, `endpoint="https://sp.example.com"` with NO `region` or `zone` configured
 - **When:** Registration is sent to the mock server
-- **Then:** Request body contains `name`, `serviceType`, `displayName`, `endpoint`, `operations` AND `metadata.region` and `metadata.zone` are absent from the payload
+- **Then:** Request body contains `name`, `service_type`, `display_name`, `endpoint`, `operations` AND `metadata.region_code` and `metadata.zone` are absent from the payload
 
 ### TC-I083: Repeated registration start requests produce only one registration attempt
 

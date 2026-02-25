@@ -3,6 +3,7 @@ package apiserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -35,9 +36,10 @@ func (h *apiHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 // Server is the HTTP server for the container service provider API.
 type Server struct {
-	cfg    *config.Config
-	logger *slog.Logger
-	srv    *http.Server
+	cfg     *config.Config
+	logger  *slog.Logger
+	srv     *http.Server
+	onReady func(context.Context)
 }
 
 // newBadRequestHandler returns a handler that writes a 400 Bad Request
@@ -57,6 +59,14 @@ func newBadRequestHandler(logger *slog.Logger) func(http.ResponseWriter, *http.R
 			logger.Error("failed to encode error response", "error", encErr)
 		}
 	}
+}
+
+// WithOnReady registers a callback invoked once the listener is accepting
+// connections. Use this to trigger work (e.g. registration) that must wait
+// until the HTTP server is ready.
+func (s *Server) WithOnReady(fn func(context.Context)) *Server {
+	s.onReady = fn
+	return s
 }
 
 // New creates a new Server with the given config and logger.
@@ -95,11 +105,12 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		ErrorHandlerFunc: badReq,
 	})
 
-	return &Server{
+	s := &Server{
 		cfg:    cfg,
 		logger: logger,
 		srv:    &http.Server{Handler: handler},
 	}
+	return s
 }
 
 // openAPIValidationMiddleware validates incoming requests against the OpenAPI spec.
@@ -139,11 +150,22 @@ func (s *Server) Run(ctx context.Context, ln net.Listener) error {
 
 	serveCh := make(chan error, 1)
 	go func() {
-		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		if err := s.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveCh <- err
 		}
 		close(serveCh)
 	}()
+
+	if s.onReady != nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("onReady callback panicked", "panic", r)
+				}
+			}()
+			s.onReady(ctx)
+		}()
+	}
 
 	select {
 	case <-ctx.Done():

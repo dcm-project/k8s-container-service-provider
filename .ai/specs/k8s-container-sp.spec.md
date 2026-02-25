@@ -1035,14 +1035,14 @@ integration, provider capability updates post-registration.
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
 | REQ-REG-010 | The SP MUST register with DCM on startup via `POST {dcm.registrationUrl}/providers` | MUST | |
-| REQ-REG-020 | The registration payload MUST include `name`, `serviceType`, `displayName`, `endpoint`, `operations`, and optionally `metadata.region`/`metadata.zone` | MUST | |
+| REQ-REG-020 | The registration payload MUST include `name`, `service_type`, `display_name`, `endpoint`, `operations`, and optionally `metadata.region_code`/`metadata.zone` | MUST | |
 | REQ-REG-030 | Registration MUST execute asynchronously | MUST | |
 | REQ-REG-031 | Registration MUST NOT block server startup | MUST | |
 | REQ-REG-040 | Registration MUST retry with exponential backoff on failure with a maximum backoff interval | MUST | |
 | REQ-REG-050 | Registration failures MUST be logged | MUST | |
 | REQ-REG-051 | Registration failures MUST NOT cause the SP to exit | MUST | |
 | REQ-REG-060 | Registration MUST be idempotent: re-registration on restart updates the existing entry (not duplicated) | MUST | |
-| REQ-REG-070 | The SP MUST use the DCM registration client library `github.com/dcm-project/service-provider-api/pkg/registration/client` | MUST | |
+| REQ-REG-070 | The SP MUST use the official DCM service provider API client library for registration | MUST | |
 
 #### Configuration Introduced
 
@@ -1071,11 +1071,11 @@ integration, provider capability updates post-registration.
 - **When** the payload is constructed
 - **Then** it MUST include:
   - `name`: configured provider name
-  - `serviceType`: `"container"`
-  - `displayName`: configured display name
+  - `service_type`: `"container"`
+  - `display_name`: configured display name
   - `endpoint`: `{provider.endpoint}/api/v1alpha1/containers`
   - `operations`: `["CREATE", "DELETE", "READ"]`
-  - `metadata.region`: configured region (if set)
+  - `metadata.region_code`: configured region (if set)
   - `metadata.zone`: configured zone (if set)
 
 ##### AC-REG-030: Non-blocking registration
@@ -1114,7 +1114,7 @@ integration, provider capability updates post-registration.
 - **Validates:** REQ-REG-070
 - **Given** the registration subsystem is implemented
 - **When** the registration request is sent
-- **Then** it MUST use the official DCM registration client library
+- **Then** it MUST use the official DCM service provider API client library
 
 #### Dependencies
 
