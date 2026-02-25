@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/dcm-project/k8s-container-service-provider/internal/health"
+	"github.com/dcm-project/k8s-container-service-provider/internal/handlers/health"
 )
 
 var _ = Describe("Health Handler", func() {

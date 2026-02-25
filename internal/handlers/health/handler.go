@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	"github.com/dcm-project/k8s-container-service-provider/internal/util"
 )
 
 // Handler serves the /health endpoint.
@@ -29,16 +30,13 @@ func NewHandler(startTime time.Time, version string, logger *slog.Logger) *Handl
 // GetHealth handles GET /health requests.
 func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	uptime := int(time.Since(h.startTime).Seconds())
-	resourceType := "k8s-container-service-provider.dcm.io/health"
-	path := "health"
-	version := h.version
 
 	resp := v1alpha1.Health{
 		Status:  "healthy",
-		Type:    &resourceType,
-		Path:    &path,
+		Type:    util.Ptr("k8s-container-service-provider.dcm.io/health"),
+		Path:    util.Ptr("health"),
 		Uptime:  &uptime,
-		Version: &version,
+		Version: util.Ptr(h.version),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -17,8 +17,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
+	"github.com/dcm-project/k8s-container-service-provider/internal/handlers"
 )
 
 // syncBuffer is a goroutine-safe bytes.Buffer for capturing log output
@@ -39,6 +42,16 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return string(b.buf)
+}
+
+// panicOnListHandler implements ServerInterface, panicking on ListContainers
+// to test recovery middleware. All other methods use the default stub behaviour.
+type panicOnListHandler struct {
+	oapigen.Unimplemented
+}
+
+func (p *panicOnListHandler) ListContainers(w http.ResponseWriter, _ *http.Request, _ v1alpha1.ListContainersParams) {
+	panic("unexpected failure")
 }
 
 var _ = Describe("HTTP Server", func() {
@@ -62,7 +75,8 @@ var _ = Describe("HTTP Server", func() {
 			logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 		}
 
-		srv := apiserver.New(cfg, logger, "0.0.1-test")
+		h := handlers.New(logger, time.Now(), "0.0.1-test")
+		srv := apiserver.New(cfg, logger, h)
 		Expect(srv).NotTo(BeNil(), "New() must return a non-nil server")
 
 		for _, w := range wrappers {
@@ -113,8 +127,11 @@ var _ = Describe("HTTP Server", func() {
 
 	// TC-I001: Server starts and listens on configured address
 	It("starts and accepts HTTP connections (TC-I001)", func() {
-		addr, cancel, _ := startServer(defaultConfig(), nil, nil)
-		defer cancel()
+		addr, cancel, errCh := startServer(defaultConfig(), nil, nil)
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
 
 		resp, err := http.Get(fmt.Sprintf("http://%s/health", addr))
 		Expect(err).NotTo(HaveOccurred())
@@ -124,8 +141,11 @@ var _ = Describe("HTTP Server", func() {
 
 	// TC-I002: All OpenAPI-defined routes are registered
 	It("registers all OpenAPI-defined routes (TC-I002)", func() {
-		addr, cancel, _ := startServer(defaultConfig(), nil, nil)
-		defer cancel()
+		addr, cancel, errCh := startServer(defaultConfig(), nil, nil)
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
 
 		baseURL := fmt.Sprintf("http://%s", addr)
 
@@ -159,8 +179,11 @@ var _ = Describe("HTTP Server", func() {
 
 	// TC-I003: Undefined routes return appropriate error
 	It("returns 404 or 405 for undefined routes (TC-I003)", func() {
-		addr, cancel, _ := startServer(defaultConfig(), nil, nil)
-		defer cancel()
+		addr, cancel, errCh := startServer(defaultConfig(), nil, nil)
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
 
 		resp, err := http.Get(fmt.Sprintf("http://%s/undefined-path", addr))
 		Expect(err).NotTo(HaveOccurred())
@@ -189,7 +212,8 @@ var _ = Describe("HTTP Server", func() {
 			})
 		}
 
-		addr, _, errCh := startServer(defaultConfig(), nil, []os.Signal{syscall.SIGTERM}, slowWrapper)
+		addr, cancel, errCh := startServer(defaultConfig(), nil, []os.Signal{syscall.SIGTERM}, slowWrapper)
+		defer cancel() // idempotent after signal delivery
 
 		// Start an in-flight request in the background.
 		type result struct {
@@ -245,7 +269,8 @@ var _ = Describe("HTTP Server", func() {
 			})
 		}
 
-		addr, _, errCh := startServer(defaultConfig(), nil, []os.Signal{syscall.SIGINT}, slowWrapper)
+		addr, cancel, errCh := startServer(defaultConfig(), nil, []os.Signal{syscall.SIGINT}, slowWrapper)
+		defer cancel() // idempotent after signal delivery
 
 		type result struct {
 			resp *http.Response
@@ -280,8 +305,11 @@ var _ = Describe("HTTP Server", func() {
 	// TC-I006: Server logs startup with listen address
 	It("logs startup with listen address (TC-I006)", func() {
 		var logBuf syncBuffer
-		addr, cancel, _ := startServer(defaultConfig(), &logBuf, nil)
-		defer cancel()
+		addr, cancel, errCh := startServer(defaultConfig(), &logBuf, nil)
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
 
 		Expect(addr).NotTo(BeEmpty())
 		Expect(logBuf.String()).To(ContainSubstring(addr))
@@ -306,8 +334,11 @@ var _ = Describe("HTTP Server", func() {
 	// TC-I008: Malformed requests return 400 with RFC 7807 body
 	DescribeTable("returns 400 with RFC 7807 body for malformed requests (TC-I008)",
 		func(method, path string, description string) {
-			addr, cancel, _ := startServer(defaultConfig(), nil, nil)
-			defer cancel()
+			addr, cancel, errCh := startServer(defaultConfig(), nil, nil)
+			defer func() {
+				cancel()
+				Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+			}()
 
 			url := fmt.Sprintf("http://%s%s", addr, path)
 			req, err := http.NewRequest(method, url, nil)
@@ -343,13 +374,66 @@ var _ = Describe("HTTP Server", func() {
 		Entry("invalid container_id pattern", "GET", "/api/v1alpha1/containers/UPPERCASE_ID", "container_id with uppercase characters"),
 	)
 
+	// TC-I080: Panic recovery returns RFC 7807 JSON
+	It("returns RFC 7807 JSON on handler panic (TC-I080)", func() {
+		// Use a custom handler that panics inside a route handler,
+		// ensuring the panic occurs within the chi middleware chain
+		// where the recovery middleware can catch it.
+		h := &panicOnListHandler{}
+		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+		srv := apiserver.New(defaultConfig(), logger, h)
+
+		ln, err := net.Listen("tcp", ":0")
+		Expect(err).NotTo(HaveOccurred())
+		addr := ln.Addr().String()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- srv.Run(ctx, ln)
+		}()
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
+
+		// Wait for the server to be ready.
+		Eventually(func() error {
+			resp, reqErr := http.Get(fmt.Sprintf("http://%s/health", addr))
+			if reqErr != nil {
+				return reqErr
+			}
+			resp.Body.Close()
+			return nil
+		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
+
+		// Hit the panicking route.
+		resp, err := http.Get(fmt.Sprintf("http://%s/api/v1alpha1/containers", addr))
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close()
+
+		Expect(resp.StatusCode).To(Equal(http.StatusInternalServerError))
+		Expect(resp.Header.Get("Content-Type")).To(Equal("application/problem+json"))
+
+		body, err := io.ReadAll(resp.Body)
+		Expect(err).NotTo(HaveOccurred())
+
+		var problemJSON map[string]any
+		Expect(json.Unmarshal(body, &problemJSON)).To(Succeed())
+		Expect(problemJSON).To(HaveKeyWithValue("type", "INTERNAL"))
+		Expect(problemJSON).To(HaveKey("title"))
+		Expect(problemJSON).To(HaveKey("status"))
+		// Panic message must not leak to the client.
+		Expect(string(body)).NotTo(ContainSubstring("unexpected failure"))
+	})
 	// TC-I082: onReady panic does not crash server
 	It("recovers from panicking onReady callback (TC-I082)", func() {
 		var logBuf syncBuffer
 		logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
 
 		cfg := defaultConfig()
-		srv := apiserver.New(cfg, logger, "0.0.1-test").WithOnReady(func(_ context.Context) {
+		h := handlers.New(logger, time.Now(), "0.0.1-test")
+		srv := apiserver.New(cfg, logger, h).WithOnReady(func(_ context.Context) {
 			panic("onReady boom")
 		})
 		Expect(srv).NotTo(BeNil())
@@ -387,8 +471,9 @@ var _ = Describe("HTTP Server", func() {
 	// TC-I085: onReady is invoked only after the server is confirmed serving
 	It("invokes onReady only after server is serving (TC-I085)", func() {
 		cfg := defaultConfig()
-
-		srv := apiserver.New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil)), "0.0.1-test").
+		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+		h := handlers.New(logger, time.Now(), "0.0.1-test")
+		srv := apiserver.New(cfg, logger, h).
 			WithOnReady(func(_ context.Context) {
 				// Inside onReady, verify that the health endpoint is
 				// already reachable. If the probe works correctly, this
@@ -422,7 +507,6 @@ var _ = Describe("HTTP Server", func() {
 			return nil
 		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
 	})
-
 	// TC-I079: Shutdown timeout force-terminates hung requests
 	It("force-terminates when shutdown timeout expires (TC-I079)", func() {
 		shortTimeoutCfg := &config.Config{
@@ -438,9 +522,8 @@ var _ = Describe("HTTP Server", func() {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/test/block" {
 					close(reqStarted)
-					// Block for much longer than the shutdown timeout.
-					time.Sleep(30 * time.Second)
-					w.WriteHeader(http.StatusOK)
+					// Block until the request context is cancelled by shutdown.
+					<-r.Context().Done()
 					return
 				}
 				next.ServeHTTP(w, r)
