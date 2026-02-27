@@ -1035,7 +1035,7 @@ integration, provider capability updates post-registration.
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
 | REQ-REG-010 | The SP MUST register with DCM on startup via `POST {dcm.registrationUrl}/providers` | MUST | |
-| REQ-REG-020 | The registration payload MUST include `name`, `service_type`, `display_name`, `endpoint`, `operations`, and optionally `metadata.region_code`/`metadata.zone` | MUST | |
+| REQ-REG-020 | The registration payload MUST include `name`, `service_type`, `endpoint`, `operations`, and optionally `display_name`, `metadata.region_code`/`metadata.zone` | MUST | |
 | REQ-REG-030 | Registration MUST execute asynchronously | MUST | |
 | REQ-REG-031 | Registration MUST NOT block server startup | MUST | |
 | REQ-REG-040 | Registration MUST retry with exponential backoff on failure with a maximum backoff interval | MUST | |
@@ -1050,7 +1050,7 @@ integration, provider capability updates post-registration.
 |------------|---------|---------|-------------|
 | dcm.registrationUrl | SP_DCM_REGISTRATION_URL | (required) | DCM SP API registration endpoint |
 | provider.name | SP_PROVIDER_NAME | (required) | Provider name |
-| provider.displayName | SP_PROVIDER_DISPLAY_NAME | K8s Container SP | Human-readable name |
+| provider.displayName | SP_PROVIDER_DISPLAY_NAME | (optional) | Human-readable name |
 | provider.endpoint | SP_PROVIDER_ENDPOINT | (required) | Externally reachable SP endpoint |
 | provider.region | SP_PROVIDER_REGION | (optional) | Region metadata |
 | provider.zone | SP_PROVIDER_ZONE | (optional) | Zone metadata |
@@ -1072,7 +1072,7 @@ integration, provider capability updates post-registration.
 - **Then** it MUST include:
   - `name`: configured provider name
   - `service_type`: `"container"`
-  - `display_name`: configured display name
+  - `display_name`: configured display name (if set)
   - `endpoint`: `{provider.endpoint}/api/v1alpha1/containers`
   - `operations`: `["CREATE", "DELETE", "READ"]`
   - `metadata.region_code`: configured region (if set)
@@ -1270,7 +1270,7 @@ All configuration is loaded from environment variables.
 | monitoring.debounceMs | SP_MONITOR_DEBOUNCE_MS | 500 | No | 5 |
 | monitoring.resyncPeriod | SP_MONITOR_RESYNC_PERIOD | 10m | No | 5 |
 | dcm.registrationUrl | SP_DCM_REGISTRATION_URL | - | Yes | 6 |
-| provider.displayName | SP_PROVIDER_DISPLAY_NAME | K8s Container SP | No | 6 |
+| provider.displayName | SP_PROVIDER_DISPLAY_NAME | (optional) | No | 6 |
 | provider.endpoint | SP_PROVIDER_ENDPOINT | - | Yes | 6 |
 | provider.region | SP_PROVIDER_REGION | (optional) | No | 6 |
 | provider.zone | SP_PROVIDER_ZONE | (optional) | No | 6 |

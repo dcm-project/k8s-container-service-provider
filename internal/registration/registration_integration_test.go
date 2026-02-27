@@ -231,8 +231,8 @@ var _ = Describe("Registration Integration", func() {
 		}
 
 		registrar, err := registration.NewRegistrar(cfg, logger,
-			registration.WithInitialBackoff(10*time.Millisecond),
-			registration.WithMaxBackoff(200*time.Millisecond),
+			registration.SetInitialBackoff(10*time.Millisecond),
+			registration.SetMaxBackoff(200*time.Millisecond),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
@@ -275,8 +275,8 @@ var _ = Describe("Registration Integration", func() {
 		}
 
 		registrar, err := registration.NewRegistrar(cfg, logger,
-			registration.WithInitialBackoff(10*time.Millisecond),
-			registration.WithMaxBackoff(50*time.Millisecond),
+			registration.SetInitialBackoff(10*time.Millisecond),
+			registration.SetMaxBackoff(50*time.Millisecond),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
@@ -413,8 +413,8 @@ var _ = Describe("Registration Integration", func() {
 		Expect(parsed).To(HaveKey("schema_version"))
 	})
 
-	// TC-I068: Registration omits metadata when region and zone not configured
-	It("omits metadata when no region/zone configured (TC-I068)", func() {
+	// TC-I068: Registration omits optional fields when not configured
+	It("omits optional fields when not configured (TC-I068)", func() {
 		var receivedBody []byte
 		var requestReceived atomic.Bool
 
@@ -432,10 +432,9 @@ var _ = Describe("Registration Integration", func() {
 
 		cfg = &config.Config{
 			Provider: config.ProviderConfig{
-				Name:        "k8s-sp",
-				DisplayName: "K8s SP",
-				Endpoint:    "https://sp.example.com",
-				// No Region or Zone set
+				Name:     "k8s-sp",
+				Endpoint: "https://sp.example.com",
+				// No DisplayName, Region, or Zone set
 			},
 			DCM: config.DCMConfig{
 				RegistrationURL: mockServer.URL,
@@ -454,10 +453,12 @@ var _ = Describe("Registration Integration", func() {
 		}).WithTimeout(3 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue(),
 			"expected registration request but none was received")
 
-		// Verify metadata is absent
+		// Verify optional fields are absent
 		var parsed map[string]any
 		Expect(json.Unmarshal(receivedBody, &parsed)).To(Succeed())
 		Expect(parsed).To(HaveKey("name"))
+		Expect(parsed).NotTo(HaveKey("display_name"),
+			"display_name should be absent when not configured")
 		Expect(parsed).NotTo(HaveKey("metadata"),
 			"metadata should be absent when region and zone are not configured")
 	})
@@ -525,8 +526,8 @@ var _ = Describe("Registration Integration", func() {
 		}
 
 		registrar, err := registration.NewRegistrar(cfg, logger,
-			registration.WithInitialBackoff(10*time.Millisecond),
-			registration.WithMaxBackoff(50*time.Millisecond),
+			registration.SetInitialBackoff(10*time.Millisecond),
+			registration.SetMaxBackoff(50*time.Millisecond),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())
@@ -573,8 +574,8 @@ var _ = Describe("Registration Integration", func() {
 
 		maxCap := 200 * time.Millisecond
 		registrar, err := registration.NewRegistrar(cfg, logger,
-			registration.WithInitialBackoff(10*time.Millisecond),
-			registration.WithMaxBackoff(maxCap),
+			registration.SetInitialBackoff(10*time.Millisecond),
+			registration.SetMaxBackoff(maxCap),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		ctx, cancel := context.WithCancel(context.Background())

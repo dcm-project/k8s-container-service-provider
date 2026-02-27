@@ -13,7 +13,7 @@ import (
 
 var _ = Describe("Registration Payload", func() {
 
-	// TC-U043: Payload contains all required fields
+	// TC-U043: Payload contains all configured fields
 	It("contains name, serviceType, displayName, endpoint with suffix, and operations (TC-U043)", func() {
 		cfg := &config.Config{
 			Provider: config.ProviderConfig{
@@ -68,6 +68,21 @@ var _ = Describe("Registration Payload", func() {
 		Expect(payload.Name).To(Equal("k8s-sp"))
 		// Then metadata should be nil
 		Expect(payload.Metadata).To(BeNil())
+	})
+
+	// TC-U063: Payload omits display_name when not configured
+	It("omits display_name when not configured (TC-U063)", func() {
+		cfg := &config.Config{
+			Provider: config.ProviderConfig{
+				Name:     "k8s-sp",
+				Endpoint: "https://sp.example.com",
+			},
+		}
+
+		payload := registration.BuildPayload(cfg)
+
+		Expect(payload.Name).To(Equal("k8s-sp"))
+		Expect(payload.DisplayName).To(BeNil())
 	})
 
 	// TC-U061: NewRegistrar returns error for invalid registration URL
