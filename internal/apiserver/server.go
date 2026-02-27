@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
@@ -61,12 +62,61 @@ func newBadRequestHandler(logger *slog.Logger) func(http.ResponseWriter, *http.R
 	}
 }
 
-// WithOnReady registers a callback invoked once the listener is accepting
-// connections. Use this to trigger work (e.g. registration) that must wait
-// until the HTTP server is ready.
+// readinessProbeTimeout is how long to wait for the server to confirm it is
+// serving HTTP requests before giving up and skipping the onReady callback.
+const readinessProbeTimeout = 5 * time.Second
+
+// readinessProbeInterval is the polling interval for the self-probe that
+// checks the /health endpoint before firing onReady.
+const readinessProbeInterval = 50 * time.Millisecond
+
+// WithOnReady registers a callback invoked once the server is confirmed to be
+// serving HTTP requests. The server verifies readiness by polling its own
+// health endpoint before calling fn. Use this to trigger work (e.g.
+// registration) that must wait until the HTTP server is ready.
 func (s *Server) WithOnReady(fn func(context.Context)) *Server {
 	s.onReady = fn
 	return s
+}
+
+// waitForReady polls the server's /health endpoint until it returns HTTP 200
+// or the context/timeout expires.
+func (s *Server) waitForReady(ctx context.Context, addr string) error {
+	url := fmt.Sprintf("http://%s/health", addr)
+	client := &http.Client{Timeout: 1 * time.Second}
+
+	deadline := time.NewTimer(readinessProbeTimeout)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(readinessProbeInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("server readiness probe timed out after %s", readinessProbeTimeout)
+		default:
+		}
+
+		resp, err := client.Get(url) //nolint:noctx // probe is bounded by client timeout and outer deadline
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return fmt.Errorf("server readiness probe timed out after %s", readinessProbeTimeout)
+		case <-ticker.C:
+			// continue polling
+		}
+	}
 }
 
 // New creates a new Server with the given config and logger.
@@ -157,14 +207,18 @@ func (s *Server) Run(ctx context.Context, ln net.Listener) error {
 	}()
 
 	if s.onReady != nil {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					s.logger.Error("onReady callback panicked", "panic", r)
-				}
+		if err := s.waitForReady(ctx, ln.Addr().String()); err != nil {
+			s.logger.Error("readiness probe failed, skipping onReady callback", "error", err)
+		} else {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						s.logger.Error("onReady callback panicked", "panic", r)
+					}
+				}()
+				s.onReady(ctx)
 			}()
-			s.onReady(ctx)
-		}()
+		}
 	}
 
 	select {
