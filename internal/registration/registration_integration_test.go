@@ -545,6 +545,40 @@ var _ = Describe("Registration Integration", func() {
 			"Done() channel should close after context cancellation")
 	})
 
+	// TC-I085: Done() channel closes after successful registration
+	It("Done() channel closes after successful registration (TC-I085)", func() {
+		mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/providers" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+
+		cfg = &config.Config{
+			Provider: config.ProviderConfig{
+				Name:        "k8s-sp",
+				DisplayName: "K8s Container SP",
+				Endpoint:    "https://sp.example.com",
+			},
+			DCM: config.DCMConfig{
+				RegistrationURL: mockServer.URL,
+			},
+		}
+
+		registrar, err := registration.NewRegistrar(cfg, logger)
+		Expect(err).NotTo(HaveOccurred())
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		registrar.Start(ctx)
+
+		// Done() channel should close after the successful 200 response,
+		// without requiring context cancellation.
+		Eventually(registrar.Done()).WithTimeout(3 * time.Second).Should(BeClosed(),
+			"Done() channel should close after successful registration")
+	})
+
 	// TC-I080: Backoff interval never exceeds configured max cap
 	It("backoff interval never exceeds configured maximum cap (TC-I080)", func() {
 		var requestTimes []time.Time
