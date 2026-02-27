@@ -44,12 +44,21 @@ var _ = Describe("Configuration", func() {
 		setRequiredEnv()
 		os.Setenv("SP_SERVER_ADDRESS", ":9090")
 		os.Setenv("SP_SERVER_SHUTDOWN_TIMEOUT", "30s")
+		os.Setenv("SP_PROVIDER_DISPLAY_NAME", "Test Provider")
+		os.Setenv("SP_PROVIDER_REGION", "us-east-1")
+		os.Setenv("SP_PROVIDER_ZONE", "us-east-1a")
 
 		cfg, err := config.Load()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg).NotTo(BeNil())
 		Expect(cfg.Server.Address).To(Equal(":9090"))
 		Expect(cfg.Server.ShutdownTimeout).To(Equal(30 * time.Second))
+		Expect(cfg.Provider.Name).To(Equal("test-sp"))
+		Expect(cfg.Provider.DisplayName).To(Equal("Test Provider"))
+		Expect(cfg.Provider.Endpoint).To(Equal("https://test.example.com"))
+		Expect(cfg.Provider.Region).To(Equal("us-east-1"))
+		Expect(cfg.Provider.Zone).To(Equal("us-east-1a"))
+		Expect(cfg.DCM.RegistrationURL).To(Equal("https://dcm.example.com"))
 	})
 
 	// TC-U004: Default values applied when no config specified
