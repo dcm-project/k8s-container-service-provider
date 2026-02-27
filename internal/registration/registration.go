@@ -22,18 +22,22 @@ const (
 	httpTimeout    = 30 * time.Second
 )
 
+var (
+	ops = []string{"CREATE", "DELETE", "READ"}
+)
+
 // Option configures a Registrar.
 type Option func(*Registrar)
 
-// WithInitialBackoff sets the initial retry backoff interval.
-func WithInitialBackoff(d time.Duration) Option {
+// SetInitialBackoff sets the initial retry backoff interval.
+func SetInitialBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.initialBackoff = d
 	}
 }
 
-// WithMaxBackoff sets the maximum retry backoff interval.
-func WithMaxBackoff(d time.Duration) Option {
+// SetMaxBackoff sets the maximum retry backoff interval.
+func SetMaxBackoff(d time.Duration) Option {
 	return func(r *Registrar) {
 		r.maxBackoff = d
 	}
@@ -83,16 +87,18 @@ func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Reg
 
 // BuildPayload constructs the registration payload from configuration.
 func BuildPayload(cfg *config.Config) dcmv1alpha1.Provider {
-	ops := []string{"CREATE", "DELETE", "READ"}
 
-	displayName := cfg.Provider.DisplayName
 	p := dcmv1alpha1.Provider{
 		Name:          cfg.Provider.Name,
 		ServiceType:   serviceType,
-		DisplayName:   &displayName,
 		Endpoint:      cfg.Provider.Endpoint + endpointSuffix,
 		Operations:    &ops,
 		SchemaVersion: schemaVersion,
+	}
+
+	if cfg.Provider.DisplayName != "" {
+		displayName := cfg.Provider.DisplayName
+		p.DisplayName = &displayName
 	}
 
 	if cfg.Provider.Region != "" || cfg.Provider.Zone != "" {
