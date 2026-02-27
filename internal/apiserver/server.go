@@ -92,14 +92,6 @@ func (s *Server) waitForReady(ctx context.Context, addr string) error {
 	defer ticker.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("server readiness probe timed out after %s", readinessProbeTimeout)
-		default:
-		}
-
 		resp, err := client.Get(url) //nolint:noctx // probe is bounded by client timeout and outer deadline
 		if err == nil {
 			resp.Body.Close()
@@ -147,8 +139,13 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	emptyIDHandler := func(w http.ResponseWriter, r *http.Request) {
 		badReq(w, r, fmt.Errorf("container_id is required and cannot be empty"))
 	}
-	r.Get("/api/v1alpha1/containers/", emptyIDHandler)
-	r.Delete("/api/v1alpha1/containers/", emptyIDHandler)
+	postPath, pathErr := v1alpha1.PostPath()
+	if pathErr != nil {
+		logger.Warn("failed to resolve POST path from OpenAPI spec, trailing-slash guards disabled", "error", pathErr)
+	} else {
+		r.Get(postPath+"/", emptyIDHandler)
+		r.Delete(postPath+"/", emptyIDHandler)
+	}
 
 	handler := oapigen.HandlerWithOptions(h, oapigen.ChiServerOptions{
 		BaseRouter:       r,

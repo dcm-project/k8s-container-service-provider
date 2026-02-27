@@ -12,15 +12,25 @@ import (
 	dcmv1alpha1 "github.com/dcm-project/service-provider-manager/api/v1alpha1"
 	dcmclient "github.com/dcm-project/service-provider-manager/pkg/client"
 
+	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
 )
 
 const (
-	endpointSuffix = "/api/v1alpha1/containers"
-	serviceType    = "container"
-	schemaVersion  = "v1alpha1"
-	httpTimeout    = 30 * time.Second
+	serviceType   = "container"
+	schemaVersion = "v1alpha1"
+	httpTimeout   = 30 * time.Second
 )
+
+var endpointSuffix = mustPostPath()
+
+func mustPostPath() string {
+	p, err := v1alpha1.PostPath()
+	if err != nil {
+		panic(fmt.Sprintf("registration: resolving endpoint path from OpenAPI spec: %v", err))
+	}
+	return p
+}
 
 var (
 	ops = []string{"CREATE", "DELETE", "READ"}
@@ -56,6 +66,11 @@ type Registrar struct {
 
 // NewRegistrar creates a Registrar with the given configuration and options.
 func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Registrar, error) {
+	u, err := url.Parse(cfg.DCM.RegistrationURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("creating DCM client: invalid registration URL %q", cfg.DCM.RegistrationURL)
+	}
+
 	r := &Registrar{
 		cfg:            cfg,
 		logger:         logger,
@@ -65,11 +80,6 @@ func NewRegistrar(cfg *config.Config, logger *slog.Logger, opts ...Option) (*Reg
 	}
 	for _, opt := range opts {
 		opt(r)
-	}
-
-	u, err := url.Parse(cfg.DCM.RegistrationURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return nil, fmt.Errorf("creating DCM client: invalid registration URL %q", cfg.DCM.RegistrationURL)
 	}
 
 	httpClient := &http.Client{Timeout: httpTimeout}
@@ -139,12 +149,6 @@ func (r *Registrar) run(ctx context.Context) {
 	backoff := r.initialBackoff
 
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		if err := r.register(ctx, payload); err == nil {
 			r.logger.Info("registration successful")
 			return

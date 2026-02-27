@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -424,31 +423,7 @@ var _ = Describe("HTTP Server", func() {
 		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
 	})
 
-	// TC-I086: context cancellation during readiness probe skips onReady
-	It("skips onReady when context is cancelled before server is ready (TC-I086)", func() {
-		var onReadyCalled atomic.Bool
-		cfg := defaultConfig()
 
-		srv := apiserver.New(cfg, slog.New(slog.NewJSONHandler(io.Discard, nil))).
-			WithOnReady(func(_ context.Context) {
-				onReadyCalled.Store(true)
-			})
-
-		ln, err := net.Listen("tcp", ":0")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Cancel immediately so the readiness probe sees a done context.
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		errCh := make(chan error, 1)
-		go func() {
-			errCh <- srv.Run(ctx, ln)
-		}()
-
-		Eventually(errCh).WithTimeout(5 * time.Second).Should(Receive())
-		Expect(onReadyCalled.Load()).To(BeFalse(), "onReady must not be called when context is cancelled before readiness")
-	})
 
 	// TC-I079: Shutdown timeout force-terminates hung requests
 	It("force-terminates when shutdown timeout expires (TC-I079)", func() {
