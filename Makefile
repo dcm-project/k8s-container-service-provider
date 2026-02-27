@@ -58,4 +58,4 @@ check-generate-api: generate-api
 check-aep:
 	spectral lint --fail-severity=warn ./api/v1alpha1/openapi.yaml
 
-.PHONY: build run clean fmt vet test test-race tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep
+.PHONY: build run clean fmt vet test test-cover tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep
