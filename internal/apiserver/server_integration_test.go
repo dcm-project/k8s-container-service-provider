@@ -54,6 +54,29 @@ func (p *panicOnListHandler) ListContainers(w http.ResponseWriter, _ *http.Reque
 	panic("unexpected failure")
 }
 
+// abortOnListHandler implements ServerInterface, panicking with
+// http.ErrAbortHandler on ListContainers to verify the recovery
+// middleware re-panics this sentinel value.
+type abortOnListHandler struct {
+	oapigen.Unimplemented
+}
+
+func (a *abortOnListHandler) ListContainers(_ http.ResponseWriter, _ *http.Request, _ v1alpha1.ListContainersParams) {
+	panic(http.ErrAbortHandler)
+}
+
+// headersThenPanicOnListHandler implements ServerInterface. It writes
+// a status header before panicking, so the recovery middleware cannot
+// safely write its own RFC 7807 response.
+type headersThenPanicOnListHandler struct {
+	oapigen.Unimplemented
+}
+
+func (h *headersThenPanicOnListHandler) ListContainers(w http.ResponseWriter, _ *http.Request, _ v1alpha1.ListContainersParams) {
+	w.WriteHeader(http.StatusTeapot)
+	panic("boom after headers")
+}
+
 var _ = Describe("HTTP Server", func() {
 
 	// startServer is a helper that creates a server with the given config,
@@ -456,6 +479,102 @@ var _ = Describe("HTTP Server", func() {
 		Expect(bodyStr).NotTo(ContainSubstring("0x"),
 			"memory addresses must not leak")
 	})
+
+	// TC-I086: http.ErrAbortHandler is re-panicked (connection aborted)
+	It("re-panics http.ErrAbortHandler so the connection is aborted (TC-I086)", func() {
+		var logBuf syncBuffer
+		h := &abortOnListHandler{}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+		srv := apiserver.New(defaultConfig(), logger, h)
+
+		ln, err := net.Listen("tcp", ":0")
+		Expect(err).NotTo(HaveOccurred())
+		addr := ln.Addr().String()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- srv.Run(ctx, ln)
+		}()
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
+
+		// Wait for the server to be ready.
+		Eventually(func() error {
+			resp, reqErr := http.Get(fmt.Sprintf("http://%s/health", addr))
+			if reqErr != nil {
+				return reqErr
+			}
+			resp.Body.Close()
+			return nil
+		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
+
+		// Hit the panicking route — the server should abort the connection,
+		// so we expect a transport-level error (not a 500 response).
+		_, err = http.Get(fmt.Sprintf("http://%s/api/v1alpha1/containers", addr))
+		Expect(err).To(HaveOccurred(), "expected a connection error, not a valid HTTP response")
+
+		// The middleware must NOT log "panic recovered" because ErrAbortHandler
+		// is re-panicked for net/http's built-in abort handler.
+		Consistently(func() string {
+			return logBuf.String()
+		}).WithTimeout(200 * time.Millisecond).WithPolling(50 * time.Millisecond).ShouldNot(ContainSubstring("panic recovered"))
+	})
+
+	// TC-I087: Headers-already-sent panic logs without writing RFC 7807
+	It("logs headers-already-sent without overwriting the status (TC-I087)", func() {
+		var logBuf syncBuffer
+		h := &headersThenPanicOnListHandler{}
+		logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
+		srv := apiserver.New(defaultConfig(), logger, h)
+
+		ln, err := net.Listen("tcp", ":0")
+		Expect(err).NotTo(HaveOccurred())
+		addr := ln.Addr().String()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- srv.Run(ctx, ln)
+		}()
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
+
+		// Wait for the server to be ready.
+		Eventually(func() error {
+			resp, reqErr := http.Get(fmt.Sprintf("http://%s/health", addr))
+			if reqErr != nil {
+				return reqErr
+			}
+			resp.Body.Close()
+			return nil
+		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
+
+		// Hit the panicking route.
+		resp, err := http.Get(fmt.Sprintf("http://%s/api/v1alpha1/containers", addr))
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close()
+
+		// The client should see the original 418 status, not a 500 replacement.
+		Expect(resp.StatusCode).To(Equal(http.StatusTeapot))
+
+		// Content-Type must NOT be application/problem+json because the
+		// middleware should not attempt to write a body after headers are sent.
+		Expect(resp.Header.Get("Content-Type")).NotTo(Equal("application/problem+json"))
+
+		// The server log must contain both indicators.
+		Eventually(func() string {
+			return logBuf.String()
+		}).WithTimeout(2 * time.Second).WithPolling(50 * time.Millisecond).Should(And(
+			ContainSubstring("panic recovered"),
+			ContainSubstring("headers already sent"),
+		))
+	})
+
 	// TC-I082: onReady panic does not crash server
 	It("recovers from panicking onReady callback (TC-I082)", func() {
 		var logBuf syncBuffer

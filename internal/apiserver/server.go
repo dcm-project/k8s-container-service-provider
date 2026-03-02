@@ -118,17 +118,65 @@ func scrubValidationError(err error) string {
 	return genericMsg
 }
 
+// statusRecordingResponseWriter wraps an http.ResponseWriter to track
+// whether headers have already been sent to the client. The recovery
+// middleware uses this to avoid writing a second status line after the
+// handler has already called WriteHeader or Write.
+type statusRecordingResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *statusRecordingResponseWriter) WriteHeader(code int) {
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusRecordingResponseWriter) Write(b []byte) (int, error) {
+	w.wroteHeader = true
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusRecordingResponseWriter) Flush() {
+	w.wroteHeader = true
+	if fl, ok := w.ResponseWriter.(http.Flusher); ok {
+		fl.Flush()
+	}
+}
+
+// Unwrap returns the underlying ResponseWriter, enabling Go 1.20+
+// http.ResponseController to discover optional interfaces.
+func (w *statusRecordingResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // rfc7807RecoveryMiddleware catches panics and returns an RFC 7807
 // application/problem+json response instead of a plain-text stack trace.
 //
-// NOTE: If the handler has already called w.WriteHeader() or started
-// writing the body, this recovery produces a best-effort response.
+// Special cases:
+//   - http.ErrAbortHandler is re-panicked so net/http aborts the connection.
+//   - If the handler already called WriteHeader/Write, the middleware logs the
+//     panic but does not attempt to write a response (headers already on the wire).
 func rfc7807RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sw := &statusRecordingResponseWriter{ResponseWriter: w}
 			defer func() {
 				if rec := recover(); rec != nil {
+					// http.ErrAbortHandler is a sentinel that tells
+					// net/http to abort the connection. Re-panic so
+					// the server's built-in handler takes over.
+					if rec == http.ErrAbortHandler {
+						panic(http.ErrAbortHandler)
+					}
+
 					logger.Error("panic recovered", "panic", rec, "stack", string(debug.Stack()))
+
+					if sw.wroteHeader {
+						logger.Warn("headers already sent, cannot write RFC 7807 response")
+						return
+					}
+
 					status := int32(http.StatusInternalServerError)
 					resp := v1alpha1.Error{
 						Type:   v1alpha1.INTERNAL,
@@ -143,7 +191,7 @@ func rfc7807RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Hand
 					}
 				}
 			}()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(sw, r)
 		})
 	}
 }
