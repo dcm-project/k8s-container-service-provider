@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
@@ -31,8 +32,8 @@ type Server struct {
 
 // newBadRequestHandler returns a handler that writes a 400 Bad Request
 // response with an RFC 7807 application/problem+json body. It is used
-// by the parameter binding layer (generated chi wrapper), OpenAPI
-// validation middleware, and the empty-container_id guard.
+// by the parameter binding layer (generated chi wrapper) and OpenAPI
+// validation middleware.
 func newBadRequestHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, _ *http.Request, err error) {
 		status := int32(http.StatusBadRequest)
@@ -70,38 +71,51 @@ func (s *Server) WithOnReady(fn func(context.Context)) *Server {
 
 // scrubValidationError extracts a human-readable constraint message from
 // kin-openapi validation errors, stripping raw schema JSON and value dumps.
+// For unrecognised error types it returns a generic message to avoid leaking
+// internal details to clients.
 func scrubValidationError(err error) string {
+	const genericMsg = "invalid request"
+
+	// kin-openapi request validation errors carry structured metadata.
 	var reqErr *openapi3filter.RequestError
-	if !errors.As(err, &reqErr) {
-		return err.Error()
-	}
-
-	// Build location prefix (e.g., `parameter "max_page_size" in query`).
-	var prefix string
-	if p := reqErr.Parameter; p != nil {
-		prefix = fmt.Sprintf("parameter %q in %s", p.Name, p.In)
-	} else if reqErr.RequestBody != nil {
-		prefix = "request body"
-	}
-
-	// Extract the human-readable reason from the underlying SchemaError.
-	var schemaErr *openapi3.SchemaError
-	if errors.As(reqErr.Err, &schemaErr) && schemaErr.Reason != "" {
-		if prefix != "" {
-			return prefix + ": " + schemaErr.Reason
+	if errors.As(err, &reqErr) {
+		// Build location prefix (e.g., `parameter "max_page_size" in query`).
+		var prefix string
+		if p := reqErr.Parameter; p != nil {
+			prefix = fmt.Sprintf("parameter %q in %s", p.Name, p.In)
+		} else if reqErr.RequestBody != nil {
+			prefix = "request body"
 		}
-		return schemaErr.Reason
-	}
 
-	// Fallback to RequestError.Reason if no SchemaError is available.
-	if reqErr.Reason != "" {
-		if prefix != "" {
-			return prefix + ": " + reqErr.Reason
+		// Extract the human-readable reason from the underlying SchemaError.
+		var schemaErr *openapi3.SchemaError
+		if errors.As(reqErr.Err, &schemaErr) && schemaErr.Reason != "" {
+			if prefix != "" {
+				return prefix + ": " + schemaErr.Reason
+			}
+			return schemaErr.Reason
 		}
-		return reqErr.Reason
+
+		// Fallback to RequestError.Reason if no SchemaError is available.
+		if reqErr.Reason != "" {
+			if prefix != "" {
+				return prefix + ": " + reqErr.Reason
+			}
+			return reqErr.Reason
+		}
+
+		return genericMsg
 	}
 
-	return "invalid request"
+	// oapi-codegen parameter binding errors — expose the parameter name
+	// but strip the raw parse error (e.g. strconv internals).
+	var paramErr *oapigen.InvalidParamFormatError
+	if errors.As(err, &paramErr) {
+		return fmt.Sprintf("invalid format for parameter %q", paramErr.ParamName)
+	}
+
+	// Unknown error type — return a generic message to avoid leaking internals.
+	return genericMsg
 }
 
 // rfc7807RecoveryMiddleware catches panics and returns an RFC 7807
@@ -111,7 +125,7 @@ func rfc7807RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Hand
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					logger.Error("panic recovered", "panic", rec)
+					logger.Error("panic recovered", "panic", rec, "stack", string(debug.Stack()))
 					status := int32(http.StatusInternalServerError)
 					resp := v1alpha1.Error{
 						Type:   v1alpha1.INTERNAL,
@@ -187,8 +201,19 @@ func New(cfg *config.Config, logger *slog.Logger, handler oapigen.ServerInterfac
 	// Reject trailing-slash requests with empty container_id before the
 	// generated router sees them. Chi treats /containers/ as a distinct
 	// path from /containers/{container_id}, so without this route it would 404.
-	emptyIDHandler := func(w http.ResponseWriter, r *http.Request) {
-		badReq(w, r, fmt.Errorf("container_id is required and cannot be empty"))
+	emptyIDHandler := func(w http.ResponseWriter, _ *http.Request) {
+		status := int32(http.StatusBadRequest)
+		resp := v1alpha1.Error{
+			Type:   v1alpha1.INVALIDARGUMENT,
+			Title:  "Bad Request",
+			Status: util.Ptr(status),
+			Detail: util.Ptr("container_id is required and cannot be empty"),
+		}
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusBadRequest)
+		if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
+			logger.Error("failed to encode error response", "error", encErr)
+		}
 	}
 	postPath, pathErr := v1alpha1.PostPath()
 	if pathErr != nil {
