@@ -359,12 +359,27 @@ var _ = Describe("HTTP Server", func() {
 			var problemJSON map[string]any
 			Expect(json.Unmarshal(body, &problemJSON)).To(Succeed(),
 				"body should be valid JSON for: %s", description)
-			Expect(problemJSON).To(HaveKey("type"),
-				"RFC 7807 body must have 'type' for: %s", description)
-			Expect(problemJSON).To(HaveKey("title"),
-				"RFC 7807 body must have 'title' for: %s", description)
-			Expect(problemJSON).To(HaveKey("status"),
-				"RFC 7807 body must have 'status' for: %s", description)
+			// Assert RFC 7807 field values, not just presence.
+			Expect(problemJSON).To(HaveKeyWithValue("type", "INVALID_ARGUMENT"),
+				"RFC 7807 'type' must be INVALID_ARGUMENT for: %s", description)
+			Expect(problemJSON).To(HaveKeyWithValue("title", "Bad Request"),
+				"RFC 7807 'title' must be 'Bad Request' for: %s", description)
+			Expect(problemJSON["status"]).To(BeNumerically("==", 400),
+				"RFC 7807 'status' must be 400 for: %s", description)
+
+			// Assert detail exists and is human-friendly.
+			Expect(problemJSON).To(HaveKey("detail"),
+				"RFC 7807 body must have 'detail' for: %s", description)
+			detail, ok := problemJSON["detail"].(string)
+			Expect(ok).To(BeTrue(), "detail must be a string for: %s", description)
+			Expect(detail).NotTo(BeEmpty(),
+				"detail must not be empty for: %s", description)
+			Expect(detail).NotTo(ContainSubstring("{\""),
+				"detail must not contain raw JSON schema for: %s", description)
+			Expect(detail).NotTo(ContainSubstring("strconv."),
+				"detail must not expose strconv internals for: %s", description)
+			Expect(detail).NotTo(ContainSubstring("invalid syntax"),
+				"detail must not expose parse errors for: %s", description)
 		},
 		Entry("max_page_size=NaN", "GET", "/api/v1alpha1/containers?max_page_size=not-a-number", "non-numeric max_page_size"),
 		Entry("max_page_size=0", "GET", "/api/v1alpha1/containers?max_page_size=0", "zero max_page_size"),
@@ -420,11 +435,26 @@ var _ = Describe("HTTP Server", func() {
 
 		var problemJSON map[string]any
 		Expect(json.Unmarshal(body, &problemJSON)).To(Succeed())
+
+		// Full RFC 7807 payload validation.
 		Expect(problemJSON).To(HaveKeyWithValue("type", "INTERNAL"))
-		Expect(problemJSON).To(HaveKey("title"))
-		Expect(problemJSON).To(HaveKey("status"))
-		// Panic message must not leak to the client.
-		Expect(string(body)).NotTo(ContainSubstring("unexpected failure"))
+		Expect(problemJSON["status"]).To(BeNumerically("==", 500))
+		Expect(problemJSON).To(HaveKeyWithValue("title", "Internal Server Error"))
+		Expect(problemJSON).To(HaveKeyWithValue("detail", "an unexpected error occurred"))
+
+		// Comprehensive leak prevention — panic message, stack traces, and
+		// runtime internals must not leak to the client.
+		bodyStr := string(body)
+		Expect(bodyStr).NotTo(ContainSubstring("unexpected failure"),
+			"panic message must not leak")
+		Expect(bodyStr).NotTo(ContainSubstring("goroutine"),
+			"goroutine info must not leak")
+		Expect(bodyStr).NotTo(ContainSubstring("runtime."),
+			"runtime details must not leak")
+		Expect(bodyStr).NotTo(ContainSubstring(".go:"),
+			"file paths must not leak")
+		Expect(bodyStr).NotTo(ContainSubstring("0x"),
+			"memory addresses must not leak")
 	})
 	// TC-I082: onReady panic does not crash server
 	It("recovers from panicking onReady callback (TC-I082)", func() {

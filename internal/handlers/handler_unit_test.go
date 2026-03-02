@@ -17,8 +17,8 @@ import (
 
 var _ = Describe("Composite Handler", func() {
 
-	// TC-U008: GetHealth delegates to health sub-handler
-	It("delegates GetHealth to health sub-handler (TC-U008)", func() {
+	// TC-U064: GetHealth delegates to health sub-handler
+	It("delegates GetHealth to health sub-handler (TC-U064)", func() {
 		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 		h := handlers.New(logger, time.Now(), "1.0.0")
 
@@ -37,8 +37,8 @@ var _ = Describe("Composite Handler", func() {
 		Expect(body).To(HaveKeyWithValue("version", "1.0.0"))
 	})
 
-	// TC-U009: Unimplemented endpoints return 501
-	It("returns 501 for unimplemented endpoints (TC-U009)", func() {
+	// TC-U065: Unimplemented endpoints return 501
+	It("returns 501 for unimplemented endpoints (TC-U065)", func() {
 		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 		h := handlers.New(logger, time.Now(), "1.0.0")
 

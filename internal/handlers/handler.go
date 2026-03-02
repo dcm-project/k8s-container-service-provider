@@ -9,6 +9,9 @@ import (
 	"github.com/dcm-project/k8s-container-service-provider/internal/handlers/health"
 )
 
+// TC-U008: Compile-time assertion that Handler satisfies oapigen.ServerInterface.
+var _ oapigen.ServerInterface = (*Handler)(nil)
+
 // Handler is the composite API handler that implements oapigen.ServerInterface.
 // It embeds Unimplemented so only implemented endpoints need explicit methods.
 // Sub-handlers are composed here; the apiserver package is responsible only

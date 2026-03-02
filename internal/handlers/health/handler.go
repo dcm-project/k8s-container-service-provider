@@ -29,7 +29,7 @@ func NewHandler(startTime time.Time, version string, logger *slog.Logger) *Handl
 
 // GetHealth handles GET /health requests.
 func (h *Handler) GetHealth(w http.ResponseWriter, r *http.Request) {
-	uptime := int(time.Since(h.startTime).Seconds())
+	uptime := max(0, int(time.Since(h.startTime).Seconds()))
 
 	resp := v1alpha1.Health{
 		Status:  "healthy",

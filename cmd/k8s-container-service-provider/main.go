@@ -31,7 +31,7 @@ func main() {
 func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("loading configuration: %w", err)
+		return fmt.Errorf("initializing: %w", err)
 	}
 
 	ln, err := net.Listen("tcp", cfg.Server.Address)

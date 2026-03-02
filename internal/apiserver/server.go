@@ -120,6 +120,9 @@ func scrubValidationError(err error) string {
 
 // rfc7807RecoveryMiddleware catches panics and returns an RFC 7807
 // application/problem+json response instead of a plain-text stack trace.
+//
+// NOTE: If the handler has already called w.WriteHeader() or started
+// writing the body, this recovery produces a best-effort response.
 func rfc7807RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +161,11 @@ func (s *Server) waitForReady(ctx context.Context, addr string) error {
 	defer ticker.Stop()
 
 	for {
-		resp, err := client.Get(url) //nolint:noctx // probe is bounded by client timeout and outer deadline
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("creating readiness probe request: %w", err)
+		}
+		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
