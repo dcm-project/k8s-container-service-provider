@@ -129,6 +129,15 @@ for full descriptions.
 - **When:** SIGTERM is sent to the process
 - **Then:** The server waits for the shutdown timeout AND then force-terminates AND exits (does not hang indefinitely)
 
+### TC-I085: onReady callback invoked only after server is serving
+
+- **Requirement:** REQ-HTTP-010
+- **Priority:** High
+- **Type:** Integration
+- **Given:** A server configured with an `onReady` callback
+- **When:** The server starts
+- **Then:** The `onReady` callback MUST NOT be invoked until the server is confirmed to be accepting HTTP connections (readiness probe succeeds)
+
 ---
 
 ## 2 · K8s Store — Create Operations
@@ -522,6 +531,15 @@ for full descriptions.
 - **When:** `List` is called with `page_token="not-a-valid-token"`
 - **Then:** An error is returned indicating the page token is invalid (maps to 400 Bad Request at the handler level)
 
+### TC-I086: List returns error for negative page_token offset
+
+- **Requirement:** REQ-STR-050
+- **Priority:** Medium
+- **Type:** Integration
+- **Given:** Containers exist in the namespace
+- **When:** `List` is called with a `page_token` encoding a negative offset
+- **Then:** An error is returned indicating the page token is invalid (maps to 400 Bad Request at the handler level)
+
 ---
 
 ## 7 · K8s Store — Delete Operations
@@ -845,7 +863,7 @@ for full descriptions.
 - **Requirement:** REQ-REG-020
 - **Priority:** Medium
 - **Type:** Integration
-- **Transitively covers:** TC-U045 (Payload omits metadata when region and zone not configured), TC-U063 (Payload omits display_name when not configured)
+- **Transitively covers:** TC-U045 (Payload omits metadata when region and zone not configured), TC-U064 (Payload omits display_name when not configured)
 - **Given:** Provider config: `name="k8s-sp"`, `endpoint="https://sp.example.com"` with NO `display_name`, `region`, or `zone` configured
 - **When:** Registration is sent to the mock server
 - **Then:** Request body contains `name`, `service_type`, `endpoint`, `operations` AND `display_name`, `metadata.region_code`, and `metadata.zone` are absent from the payload
@@ -876,6 +894,15 @@ for full descriptions.
 - **Given:** The mock DCM registration server is permanently unreachable AND the registration client uses a short initial backoff (e.g., 10ms) with a capped maximum interval (e.g., 200ms)
 - **When:** Registration attempts fail repeatedly (e.g., 10+ attempts)
 - **Then:** The interval between consecutive attempts never exceeds the configured maximum cap AND the backoff pattern is exponential up to the cap
+
+### TC-I087: Done() channel closes after successful registration
+
+- **Requirement:** REQ-REG-030
+- **Priority:** Medium
+- **Type:** Integration
+- **Given:** A registrar with valid configuration and a mock DCM server that returns 200 OK
+- **When:** Registration completes successfully
+- **Then:** The `Done()` channel MUST close, signaling that the registration process has finished
 
 ---
 
@@ -910,7 +937,7 @@ for full descriptions.
 
 | Requirement    | Test Cases                          | Status  |
 |----------------|-------------------------------------|---------|
-| REQ-HTTP-010   | TC-I001, TC-I082                    | Covered |
+| REQ-HTTP-010   | TC-I001, TC-I082, TC-I085           | Covered |
 | REQ-HTTP-020   | TC-I002, TC-I003                    | Covered |
 | REQ-HTTP-030   | TC-I004, TC-I079                    | Covered |
 | REQ-HTTP-040   | TC-I005                             | Covered |
@@ -922,7 +949,7 @@ for full descriptions.
 | REQ-STR-020    | TC-I009                             | Covered |
 | REQ-STR-030    | TC-I028                             | Covered |
 | REQ-STR-040    | TC-I030, TC-I032                    | Covered |
-| REQ-STR-050    | TC-I034, TC-I035, TC-I078           | Covered |
+| REQ-STR-050    | TC-I034, TC-I035, TC-I078, TC-I086  | Covered |
 | REQ-STR-060    | TC-I036                             | Covered |
 | REQ-STR-070    | TC-I037, TC-I039                    | Covered |
 | REQ-STR-080    | TC-I081                             | Covered |
@@ -971,7 +998,7 @@ for full descriptions.
 | REQ-MON-150    | TC-I048                             | Covered |
 | REQ-REG-010    | TC-I053                             | Covered |
 | REQ-REG-020    | TC-I054, TC-I068                    | Covered |
-| REQ-REG-030    | TC-I055, TC-I083, TC-I084           | Covered |
+| REQ-REG-030    | TC-I055, TC-I083, TC-I084, TC-I087  | Covered |
 | REQ-REG-031    | TC-I055                             | Covered |
 | REQ-REG-040    | TC-I056, TC-I080                    | Covered |
 | REQ-REG-050    | TC-I057                             | Covered |
@@ -986,7 +1013,7 @@ for full descriptions.
 | REQ-XC-LOG-010 | TC-I006, TC-I007                    | Covered |
 | REQ-XC-LOG-020 | TC-I006, TC-I007 (INFO), TC-I057 (ERROR) | Covered |
 
-**Total:** 84 integration test cases (including 2 E2E placeholders) covering 74
+**Total:** 87 integration test cases (including 2 E2E placeholders) covering 74
 requirements at integration level.
 
 > Requirements not listed above (REQ-HTTP-050–070, REQ-HLT-010–040,

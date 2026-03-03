@@ -1,0 +1,93 @@
+package kubernetes_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	k8sstore "github.com/dcm-project/k8s-container-service-provider/internal/kubernetes"
+	"github.com/dcm-project/k8s-container-service-provider/internal/store"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
+)
+
+var _ = Describe("K8s Store", func() {
+	Describe("Conflict & Namespace", func() {
+
+		// TC-I028: Create returns conflict when Deployment name already exists
+		It("returns conflict when Deployment name already exists (TC-I028)", func() {
+			s, client := newTestStore(defaultConfig())
+
+			// Pre-create a Deployment with name "web-app"
+			err := createFakeDeployment(client, "default", "web-app", "original-id")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Attempt to create with the same name but different ID
+			c := minimalContainer("web-app")
+			_, err = s.Create(context.Background(), c, "different-id")
+
+			var conflictErr *store.ConflictError
+			Expect(errors.As(err, &conflictErr)).To(BeTrue(), "expected ConflictError, got: %v", err)
+
+			// Verify existing Deployment is not modified
+			deploy, getErr := client.AppsV1().Deployments("default").Get(context.Background(), "web-app", metav1.GetOptions{})
+			Expect(getErr).NotTo(HaveOccurred())
+			Expect(deploy.Labels["dcm-instance-id"]).To(Equal("original-id"))
+		})
+
+		// TC-I029: All resources created in the configured namespace
+		It("creates all resources in the configured namespace (TC-I029)", func() {
+			cfg := k8sstore.K8sConfig{
+				Namespace:          "production",
+				CreateService:      true,
+				DefaultServiceType: "ClusterIP",
+			}
+			s, client := newTestStore(cfg)
+			c := containerWithPorts("my-app", 8080)
+
+			_, err := s.Create(context.Background(), c, "test-id-029")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Verify Deployment is in "production" namespace
+			deploy, err := client.AppsV1().Deployments("production").Get(context.Background(), "my-app", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(deploy.Namespace).To(Equal("production"))
+
+			// Verify Service is in "production" namespace
+			svc, err := client.CoreV1().Services("production").Get(context.Background(), "my-app", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(svc.Namespace).To(Equal("production"))
+		})
+
+		// TC-I081: Unexpected K8s API error produces internal store error
+		It("produces internal store error on unexpected K8s API error (TC-I081)", func() {
+			cfg := defaultConfig()
+			client := fake.NewSimpleClientset()
+			s := k8sstore.NewK8sContainerStore(client, cfg)
+
+			// Inject a K8s API error on Deployment creation
+			client.PrependReactor("create", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, apierrors.NewInternalError(fmt.Errorf("etcd cluster unavailable"))
+			})
+
+			c := minimalContainer("my-app")
+			_, err := s.Create(context.Background(), c, "test-id-081")
+			Expect(err).To(HaveOccurred())
+
+			// Error must NOT be a typed store error
+			var notFoundErr *store.NotFoundError
+			var conflictErr *store.ConflictError
+			Expect(errors.As(err, &notFoundErr)).To(BeFalse(), "error should not be NotFoundError")
+			Expect(errors.As(err, &conflictErr)).To(BeFalse(), "error should not be ConflictError")
+
+			// Error should contain K8s API error detail (reactor was triggered)
+			Expect(err.Error()).To(ContainSubstring("etcd cluster unavailable"))
+		})
+	})
+})
