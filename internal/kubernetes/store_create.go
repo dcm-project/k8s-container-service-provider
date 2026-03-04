@@ -7,9 +7,33 @@ import (
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// shouldCreateService determines whether a Kubernetes Service should be created.
+// ProviderHints override the config default when explicitly set.
+func shouldCreateService(cfg K8sConfig, hints *v1alpha1.ProviderHints) bool {
+	if hints != nil && hints.Kubernetes != nil && hints.Kubernetes.Service != nil && hints.Kubernetes.Service.Enabled != nil {
+		return *hints.Kubernetes.Service.Enabled
+	}
+	return cfg.CreateService
+}
+
+// resolveServiceType determines the Kubernetes Service type to use.
+// ProviderHints override the config default when explicitly set.
+func resolveServiceType(cfg K8sConfig, hints *v1alpha1.ProviderHints) corev1.ServiceType {
+	if hints != nil && hints.Kubernetes != nil && hints.Kubernetes.Service != nil && hints.Kubernetes.Service.Type != nil {
+		return corev1.ServiceType(*hints.Kubernetes.Service.Type)
+	}
+	return corev1.ServiceType(cfg.DefaultServiceType)
+}
+
+// hasPorts returns true if the container has at least one network port defined.
+func hasPorts(container v1alpha1.Container) bool {
+	return container.Network != nil && len(container.Network.Ports) > 0
+}
 
 // Create creates a new container backed by a Kubernetes Deployment (and
 // optionally a Service).

@@ -50,13 +50,12 @@ func (s *K8sContainerStore) List(ctx context.Context, maxPageSize int32, pageTok
 	for i := range paged {
 		deploy := &paged[i]
 		instanceID := deploy.Labels[LabelInstanceID]
-		c := containerFromDeployment(deploy, instanceID)
-
-		if err := s.enrichFromCluster(ctx, &c, deploy, instanceID); err != nil {
+		c, err := s.buildContainer(ctx, deploy, instanceID)
+		if err != nil {
 			return nil, err
 		}
 
-		containers = append(containers, c)
+		containers = append(containers, *c)
 	}
 
 	result := &v1alpha1.ContainerList{

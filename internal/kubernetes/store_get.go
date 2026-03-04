@@ -25,11 +25,5 @@ func (s *K8sContainerStore) Get(ctx context.Context, containerID string) (*v1alp
 	}
 
 	deploy := &deploys.Items[0]
-	result := containerFromDeployment(deploy, containerID)
-
-	if err := s.enrichFromCluster(ctx, &result, deploy, containerID); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
+	return s.buildContainer(ctx, deploy, containerID)
 }
