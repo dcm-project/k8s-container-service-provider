@@ -12,15 +12,16 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/handlers"
 )
 
 var _ = Describe("Composite Handler", func() {
 
-	// TC-U064: GetHealth delegates to health sub-handler
-	It("delegates GetHealth to health sub-handler (TC-U064)", func() {
+	// TC-U066: GetHealth delegates to health sub-handler
+	It("delegates GetHealth to health sub-handler (TC-U066)", func() {
 		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-		h := handlers.New(logger, time.Now(), "1.0.0")
+		h := handlers.New(logger, time.Now(), "1.0.0", &oapigen.Unimplemented{})
 
 		req := httptest.NewRequest(http.MethodGet, "/health", nil)
 		rec := httptest.NewRecorder()
@@ -40,7 +41,7 @@ var _ = Describe("Composite Handler", func() {
 	// TC-U065: Unimplemented endpoints return 501
 	It("returns 501 for unimplemented endpoints (TC-U065)", func() {
 		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-		h := handlers.New(logger, time.Now(), "1.0.0")
+		h := handlers.New(logger, time.Now(), "1.0.0", &oapigen.Unimplemented{})
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1alpha1/containers", nil)
 		rec := httptest.NewRecorder()
