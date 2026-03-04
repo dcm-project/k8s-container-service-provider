@@ -27,7 +27,7 @@ var _ = Describe("K8s Store", func() {
 			Expect(err).NotTo(HaveOccurred())
 			err = createFakePod(client, "default", "my-app-pod", "abc-123", corev1.PodRunning, "10.0.0.1")
 			Expect(err).NotTo(HaveOccurred())
-			err = createFakeServiceWithClusterIP(client, "default", "my-app", "abc-123", corev1.ServiceTypeClusterIP, "10.96.0.1", 8080)
+			err = createFakeService(client, "default", "my-app", "abc-123", corev1.ServiceTypeClusterIP, []int32{8080}, withClusterIP("10.96.0.1"))
 			Expect(err).NotTo(HaveOccurred())
 
 			result, err := s.Get(context.Background(), "abc-123")
@@ -82,7 +82,7 @@ var _ = Describe("K8s Store", func() {
 			Expect(err).NotTo(HaveOccurred())
 			err = createFakePod(client, "default", "my-app-pod", "abc-123", corev1.PodRunning, "10.0.0.1")
 			Expect(err).NotTo(HaveOccurred())
-			err = createFakeLBService(client, "default", "my-app", "abc-123", "203.0.113.1", 8080)
+			err = createFakeService(client, "default", "my-app", "abc-123", corev1.ServiceTypeLoadBalancer, []int32{8080}, withLoadBalancerIP("203.0.113.1"))
 			Expect(err).NotTo(HaveOccurred())
 
 			result, err := s.Get(context.Background(), "abc-123")
@@ -100,15 +100,15 @@ var _ = Describe("K8s Store", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			transitionTime := time.Date(2026, 2, 18, 10, 0, 0, 0, time.UTC)
-			err = createFakePodWithConditions(client, "default", "my-app-pod", "abc-123",
+			err = createFakePod(client, "default", "my-app-pod", "abc-123",
 				corev1.PodRunning, "10.0.0.1",
-				[]corev1.PodCondition{
+				withPodConditions([]corev1.PodCondition{
 					{
 						Type:               corev1.PodReady,
 						Status:             corev1.ConditionTrue,
 						LastTransitionTime: metav1.NewTime(transitionTime),
 					},
-				},
+				}),
 			)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -123,14 +123,14 @@ var _ = Describe("K8s Store", func() {
 			s, client := newTestStore(defaultConfig())
 
 			transitionTime := time.Date(2026, 2, 18, 9, 0, 0, 0, time.UTC)
-			err := createFakeDeploymentWithConditions(client, "default", "my-app", "abc-123",
-				[]appsv1.DeploymentCondition{
+			err := createFakeDeployment(client, "default", "my-app", "abc-123",
+				withDeploymentConditions([]appsv1.DeploymentCondition{
 					{
 						Type:               appsv1.DeploymentAvailable,
 						Status:             corev1.ConditionTrue,
 						LastTransitionTime: metav1.NewTime(transitionTime),
 					},
-				},
+				}),
 			)
 			Expect(err).NotTo(HaveOccurred())
 

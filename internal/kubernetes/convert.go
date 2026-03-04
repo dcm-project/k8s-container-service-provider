@@ -2,43 +2,16 @@ package kubernetes
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
+	"github.com/dcm-project/k8s-container-service-provider/internal/units"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
-
-// ConvertCPU converts a ContainerCpu spec to Kubernetes resource quantities
-// for requests and limits.
-func ConvertCPU(cpu v1alpha1.ContainerCpu) (requests, limits resource.Quantity) {
-	requests = *resource.NewQuantity(int64(cpu.Min), resource.DecimalSI)
-	limits = *resource.NewQuantity(int64(cpu.Max), resource.DecimalSI)
-	return requests, limits
-}
-
-// unitMapping maps API memory units to Kubernetes binary units.
-var unitMapping = map[string]string{
-	"MB": "Mi",
-	"GB": "Gi",
-	"TB": "Ti",
-}
-
-// ConvertMemory converts a memory string (e.g., "1GB") to a Kubernetes
-// resource quantity.
-func ConvertMemory(memoryStr string) (resource.Quantity, error) {
-	for suffix, k8sUnit := range unitMapping {
-		if strings.HasSuffix(memoryStr, suffix) {
-			numStr := strings.TrimSuffix(memoryStr, suffix)
-			return resource.ParseQuantity(numStr + k8sUnit)
-		}
-	}
-	return resource.Quantity{}, fmt.Errorf("unsupported memory unit in %q", memoryStr)
-}
 
 // MapPodPhaseToStatus maps a Kubernetes Pod phase to a container status.
 // Returns the mapped status and true if mapping exists, or ("", false)
@@ -60,28 +33,111 @@ func MapPodPhaseToStatus(phase corev1.PodPhase) (v1alpha1.ContainerStatus, bool)
 }
 
 // containerFromDeployment reconstructs an API Container from a Kubernetes Deployment.
-func containerFromDeployment(deploy *appsv1.Deployment, instanceID string) v1alpha1.Container {
+// It reverse-maps Deployment spec fields back to the API representation.
+func containerFromDeployment(deploy *appsv1.Deployment, instanceID string) (v1alpha1.Container, error) {
+	containers := deploy.Spec.Template.Spec.Containers
 	id := instanceID
 	path := fmt.Sprintf("containers/%s", instanceID)
 	ns := deploy.Namespace
 	createTime := deploy.CreationTimestamp.Time
 	serviceType := v1alpha1.ContainerServiceTypeContainer
 
+	k8sC := containers[0]
+
 	c := v1alpha1.Container{
 		Id:          &id,
 		Path:        &path,
 		ServiceType: serviceType,
 		CreateTime:  &createTime,
+		Image:       v1alpha1.ContainerImage{Reference: k8sC.Image},
 		Metadata: v1alpha1.ContainerMetadata{
 			Name:      deploy.Name,
 			Namespace: &ns,
 		},
 	}
 
-	k8sC := deploy.Spec.Template.Spec.Containers[0]
-	c.Image = v1alpha1.ContainerImage{Reference: k8sC.Image}
+	// Reconstruct resources from K8s resource requirements.
+	c.Resources = resourcesFromContainer(k8sC)
 
-	return c
+	// Reconstruct process (command/args/env) if present.
+	if proc := processFromContainer(k8sC); proc != nil {
+		c.Process = proc
+	}
+
+	// Reconstruct network ports if present.
+	if len(k8sC.Ports) > 0 {
+		ports := make([]v1alpha1.ContainerPort, len(k8sC.Ports))
+		for i, p := range k8sC.Ports {
+			ports[i] = v1alpha1.ContainerPort{ContainerPort: int(p.ContainerPort)}
+		}
+		c.Network = &v1alpha1.ContainerNetwork{Ports: ports}
+	}
+
+	// Reconstruct user labels by filtering out DCM reserved labels.
+	if userLabels := userLabelsFromDeployment(deploy); len(userLabels) > 0 {
+		c.Metadata.Labels = &userLabels
+	}
+
+	return c, nil
+}
+
+// resourcesFromContainer extracts CPU and memory resources from a K8s container spec.
+func resourcesFromContainer(k8sC corev1.Container) v1alpha1.ContainerResources {
+	res := v1alpha1.ContainerResources{}
+
+	if req, ok := k8sC.Resources.Requests[corev1.ResourceCPU]; ok {
+		res.Cpu.Min = int(req.Value())
+	}
+	if lim, ok := k8sC.Resources.Limits[corev1.ResourceCPU]; ok {
+		res.Cpu.Max = int(lim.Value())
+	}
+	if req, ok := k8sC.Resources.Requests[corev1.ResourceMemory]; ok {
+		res.Memory.Min = units.MemoryQuantityToAPI(req)
+	}
+	if lim, ok := k8sC.Resources.Limits[corev1.ResourceMemory]; ok {
+		res.Memory.Max = units.MemoryQuantityToAPI(lim)
+	}
+
+	return res
+}
+
+// processFromContainer extracts process configuration from a K8s container spec.
+// Returns nil if no command, args, or env are set.
+func processFromContainer(k8sC corev1.Container) *v1alpha1.ContainerProcess {
+	if len(k8sC.Command) == 0 && len(k8sC.Args) == 0 && len(k8sC.Env) == 0 {
+		return nil
+	}
+
+	proc := &v1alpha1.ContainerProcess{}
+	if len(k8sC.Command) > 0 {
+		cmd := make([]string, len(k8sC.Command))
+		copy(cmd, k8sC.Command)
+		proc.Command = &cmd
+	}
+	if len(k8sC.Args) > 0 {
+		args := make([]string, len(k8sC.Args))
+		copy(args, k8sC.Args)
+		proc.Args = &args
+	}
+	if len(k8sC.Env) > 0 {
+		envVars := make([]v1alpha1.ContainerEnvVar, len(k8sC.Env))
+		for i, e := range k8sC.Env {
+			envVars[i] = v1alpha1.ContainerEnvVar{Name: e.Name, Value: e.Value}
+		}
+		proc.Env = &envVars
+	}
+	return proc
+}
+
+// userLabelsFromDeployment extracts user-defined labels by filtering out DCM reserved labels.
+func userLabelsFromDeployment(deploy *appsv1.Deployment) map[string]string {
+	labels := make(map[string]string)
+	for k, v := range deploy.Labels {
+		if !dcm.ReservedLabelKeys[k] {
+			labels[k] = v
+		}
+	}
+	return labels
 }
 
 // enrichWithPod populates runtime data from a Pod into the Container.
@@ -171,12 +227,12 @@ func buildDeployment(container v1alpha1.Container, id string, cfg K8sConfig, lab
 	selectorLabels := dcmLabels(id)
 
 	// CPU resources
-	cpuReq, cpuLim := ConvertCPU(container.Resources.Cpu)
+	cpuReq, cpuLim := units.ConvertCPU(container.Resources.Cpu)
 
 	// Memory resources — errors handled upstream; safe to ignore here since
 	// validation occurs before buildDeployment is called.
-	memReq, _ := ConvertMemory(container.Resources.Memory.Min)
-	memLim, _ := ConvertMemory(container.Resources.Memory.Max)
+	memReq, _ := units.ConvertMemory(container.Resources.Memory.Min)
+	memLim, _ := units.ConvertMemory(container.Resources.Memory.Max)
 
 	k8sContainer := corev1.Container{
 		Name:  container.Metadata.Name,
@@ -250,6 +306,7 @@ func buildService(container v1alpha1.Container, id string, cfg K8sConfig, labels
 	svcPorts := make([]corev1.ServicePort, len(container.Network.Ports))
 	for i, p := range container.Network.Ports {
 		svcPorts[i] = corev1.ServicePort{
+			Name:       fmt.Sprintf("port-%d", p.ContainerPort),
 			Port:       int32(p.ContainerPort),
 			TargetPort: intstr.FromInt32(int32(p.ContainerPort)),
 			Protocol:   corev1.ProtocolTCP,

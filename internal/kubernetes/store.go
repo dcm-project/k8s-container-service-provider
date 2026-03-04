@@ -3,10 +3,12 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -17,20 +19,25 @@ import (
 type K8sContainerStore struct {
 	client kubernetes.Interface
 	cfg    K8sConfig
+	logger *slog.Logger
 }
 
-// NewK8sContainerStore creates a new K8sContainerStore with the given client and config.
-func NewK8sContainerStore(client kubernetes.Interface, cfg K8sConfig) *K8sContainerStore {
+// NewK8sContainerStore creates a new K8sContainerStore with the given client, config, and logger.
+func NewK8sContainerStore(client kubernetes.Interface, cfg K8sConfig, logger *slog.Logger) *K8sContainerStore {
 	return &K8sContainerStore{
 		client: client,
 		cfg:    cfg,
+		logger: logger,
 	}
 }
 
 // buildContainer reconstructs an API Container from a Deployment and enriches
 // it with runtime data from the cluster.
 func (s *K8sContainerStore) buildContainer(ctx context.Context, deploy *appsv1.Deployment, instanceID string) (*v1alpha1.Container, error) {
-	c := containerFromDeployment(deploy, instanceID)
+	c, err := containerFromDeployment(deploy, instanceID)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.enrichFromCluster(ctx, &c, deploy, instanceID); err != nil {
 		return nil, err
 	}
@@ -51,13 +58,20 @@ func (s *K8sContainerStore) enrichFromCluster(
 		return err
 	}
 
-	if len(pods.Items) == 1 {
+	switch {
+	case len(pods.Items) == 1:
 		enrichWithPod(c, &pods.Items[0])
-	} else if len(pods.Items) > 1 {
+	case len(pods.Items) == 2 && isRollingUpdate(deploy):
+		s.logger.Warn("rolling update in progress, selecting active pod",
+			"instanceID", instanceID,
+			"podCount", len(pods.Items),
+		)
+		enrichWithPod(c, selectActivePod(pods.Items))
+	case len(pods.Items) > 1:
 		return &store.ConflictError{
 			Message: fmt.Sprintf("multiple pods found for container %q", instanceID),
 		}
-	} else {
+	default: // 0 pods
 		pending := v1alpha1.PENDING
 		c.Status = &pending
 		if t := latestDeploymentTransitionTime(deploy); t != nil {
@@ -75,4 +89,30 @@ func (s *K8sContainerStore) enrichFromCluster(
 	}
 
 	return nil
+}
+
+// isRollingUpdate returns true if the Deployment is in the middle of a rollout.
+func isRollingUpdate(deploy *appsv1.Deployment) bool {
+	if deploy.Spec.Replicas != nil && deploy.Status.UpdatedReplicas != *deploy.Spec.Replicas {
+		return true
+	}
+	return deploy.Status.UnavailableReplicas > 0
+}
+
+// selectActivePod returns the pod currently able to process work.
+// Prefers Running pods; falls back to the most recently created pod.
+func selectActivePod(pods []corev1.Pod) *corev1.Pod {
+	for i := range pods {
+		if pods[i].Status.Phase == corev1.PodRunning {
+			return &pods[i]
+		}
+	}
+	// No Running pod — pick the newest by creation timestamp.
+	newest := &pods[0]
+	for i := 1; i < len(pods); i++ {
+		if pods[i].CreationTimestamp.After(newest.CreationTimestamp.Time) {
+			newest = &pods[i]
+		}
+	}
+	return newest
 }

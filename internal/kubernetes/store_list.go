@@ -7,15 +7,21 @@ import (
 	"strconv"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const defaultPageSize = 50
 
-// List returns a paginated list of containers. Pagination is implemented at
-// the application level because the fake K8s client does not support
-// Limit/Continue.
+// List returns a paginated list of containers.
+//
+// Known limitation (REQ-K8S-250): Pagination uses application-level offsets
+// instead of Kubernetes continue tokens. This approach fetches ALL DCM-managed
+// Deployments and slices in-memory. It won't scale to large clusters and may
+// produce inconsistent results between pages if containers are added or removed
+// between paginated requests. Plan: migrate to metav1.ListOptions{Limit, Continue}
+// when moving beyond fake client tests.
 func (s *K8sContainerStore) List(ctx context.Context, maxPageSize int32, pageToken string) (*v1alpha1.ContainerList, error) {
 	if maxPageSize <= 0 {
 		maxPageSize = defaultPageSize
@@ -49,7 +55,7 @@ func (s *K8sContainerStore) List(ctx context.Context, maxPageSize int32, pageTok
 	containers := make([]v1alpha1.Container, 0, len(paged))
 	for i := range paged {
 		deploy := &paged[i]
-		instanceID := deploy.Labels[LabelInstanceID]
+		instanceID := deploy.Labels[dcm.LabelInstanceID]
 		c, err := s.buildContainer(ctx, deploy, instanceID)
 		if err != nil {
 			return nil, err

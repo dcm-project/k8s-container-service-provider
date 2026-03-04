@@ -22,7 +22,7 @@ var _ = Describe("K8s Store", func() {
 			// Pre-create Deployment and Service
 			err := createFakeDeployment(client, "default", "my-app", "abc-123")
 			Expect(err).NotTo(HaveOccurred())
-			err = createFakeService(client, "default", "my-app", "abc-123", corev1.ServiceTypeClusterIP, 8080)
+			err = createFakeService(client, "default", "my-app", "abc-123", corev1.ServiceTypeClusterIP, []int32{8080})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = s.Delete(context.Background(), "abc-123")

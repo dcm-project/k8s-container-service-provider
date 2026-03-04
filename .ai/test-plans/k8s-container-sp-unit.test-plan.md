@@ -755,7 +755,7 @@ dedicated test class or `Describe` block.
 - **Then:** `display_name` is absent from the payload (nil pointer)
 - **Referenced by:** TC-I068 (registration without optional fields integration test)
 
-#### TC-U064: Composite handler delegates GetHealth to health sub-handler
+#### TC-U066: Composite handler delegates GetHealth to health sub-handler
 
 - **Requirement:** REQ-HLT-010
 - **Priority:** Medium

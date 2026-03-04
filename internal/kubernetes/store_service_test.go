@@ -72,6 +72,22 @@ var _ = Describe("K8s Store", func() {
 			Expect(svcs.Items[0].Spec.Ports).To(HaveLen(2))
 		})
 
+		// TC-I090: Multi-port Service has named ports for K8s compliance
+		It("assigns unique names to each ServicePort (TC-I090)", func() {
+			s, client := newTestStore(serviceEnabledConfig())
+			c := containerWithPorts("my-app", 8080, 9090, 3000)
+
+			_, err := s.Create(context.Background(), c, "test-id-090")
+			Expect(err).NotTo(HaveOccurred())
+
+			svc, err := client.CoreV1().Services("default").Get(context.Background(), "my-app", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(svc.Spec.Ports).To(HaveLen(3))
+			Expect(svc.Spec.Ports[0].Name).To(Equal("port-8080"))
+			Expect(svc.Spec.Ports[1].Name).To(Equal("port-9090"))
+			Expect(svc.Spec.Ports[2].Name).To(Equal("port-3000"))
+		})
+
 		// TC-I023: Service uses default type from configuration
 		It("uses default service type from config (TC-I023)", func() {
 			s, client := newTestStore(serviceEnabledConfig())

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -69,7 +71,8 @@ var _ = Describe("K8s Store", func() {
 		It("rolls back Deployment when Service creation fails (TC-I088)", func() {
 			cfg := serviceEnabledConfig()
 			client := fake.NewSimpleClientset()
-			s := k8sstore.NewK8sContainerStore(client, cfg)
+			logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+			s := k8sstore.NewK8sContainerStore(client, cfg, logger)
 
 			// Inject a Service creation error
 			client.PrependReactor("create", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -101,7 +104,8 @@ var _ = Describe("K8s Store", func() {
 		It("produces internal store error on unexpected K8s API error (TC-I081)", func() {
 			cfg := defaultConfig()
 			client := fake.NewSimpleClientset()
-			s := k8sstore.NewK8sContainerStore(client, cfg)
+			logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+			s := k8sstore.NewK8sContainerStore(client, cfg, logger)
 
 			// Inject a K8s API error on Deployment creation
 			client.PrependReactor("create", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {

@@ -239,17 +239,5 @@ var _ = Describe("K8s Store", func() {
 			Expect(deploy.Spec.Template.Labels).To(HaveKeyWithValue("team", "platform"))
 		})
 
-		// TC-I071: Create rejects label collision with DCM labels
-		It("rejects label collision with DCM labels (TC-I071)", func() {
-			s, _ := newTestStore(defaultConfig())
-			c := minimalContainer("my-app")
-			labels := map[string]string{"managed-by": "custom-value"}
-			c.Metadata.Labels = &labels
-
-			_, err := s.Create(context.Background(), c, "test-id-071")
-
-			var invalidErr *store.InvalidArgumentError
-			Expect(errors.As(err, &invalidErr)).To(BeTrue(), "expected InvalidArgumentError, got: %v", err)
-		})
 	})
 })

@@ -38,10 +38,6 @@ func hasPorts(container v1alpha1.Container) bool {
 // Create creates a new container backed by a Kubernetes Deployment (and
 // optionally a Service).
 func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Container, id string) (*v1alpha1.Container, error) {
-	// Validate user labels don't collide with DCM reserved labels and build merged labels.
-	if err := validateUserLabels(container.Metadata.Labels); err != nil {
-		return nil, err
-	}
 	labels := dcmLabels(id)
 	if container.Metadata.Labels != nil {
 		labels = mergeLabels(labels, *container.Metadata.Labels)
@@ -68,11 +64,6 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 		}
 	}
 
-	// Validate memory format before building Deployment.
-	if err := validateMemory(container.Resources.Memory.Min, container.Resources.Memory.Max); err != nil {
-		return nil, err
-	}
-
 	// Create Deployment.
 	deploy := buildDeployment(container, id, s.cfg, labels)
 	_, err = s.client.AppsV1().Deployments(s.cfg.Namespace).Create(ctx, deploy, metav1.CreateOptions{})
@@ -90,27 +81,27 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 		_, err = s.client.CoreV1().Services(s.cfg.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 		if err != nil {
 			// Rollback: delete the just-created Deployment.
-			_ = s.client.AppsV1().Deployments(s.cfg.Namespace).Delete(ctx, deploy.Name, metav1.DeleteOptions{})
+			// Use context.WithoutCancel with a timeout so the rollback
+			// completes even if the original context was cancelled, but
+			// doesn't hang indefinitely on a degraded cluster.
+			propagation := metav1.DeletePropagationBackground
+			rollbackCtx, rollbackCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer rollbackCancel()
+			if delErr := s.client.AppsV1().Deployments(s.cfg.Namespace).Delete(rollbackCtx, deploy.Name, metav1.DeleteOptions{
+				PropagationPolicy: &propagation,
+			}); delErr != nil {
+				s.logger.Error("failed to rollback Deployment after Service creation failure",
+					"deployment", deploy.Name,
+					"namespace", s.cfg.Namespace,
+					"rollbackError", delErr,
+					"originalError", err,
+				)
+			}
 			return nil, err
 		}
 	}
 
 	return newContainerResult(container, id, s.cfg.Namespace), nil
-}
-
-// validateMemory checks that both memory strings can be parsed by ConvertMemory.
-func validateMemory(min, max string) error {
-	if _, err := ConvertMemory(min); err != nil {
-		return &store.InvalidArgumentError{
-			Message: fmt.Sprintf("invalid memory.min: %s", err),
-		}
-	}
-	if _, err := ConvertMemory(max); err != nil {
-		return &store.InvalidArgumentError{
-			Message: fmt.Sprintf("invalid memory.max: %s", err),
-		}
-	}
-	return nil
 }
 
 // newContainerResult stamps server-assigned fields onto a user-provided container.

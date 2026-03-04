@@ -2,10 +2,15 @@ package kubernetes_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
+	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
 	k8sstore "github.com/dcm-project/k8s-container-service-provider/internal/kubernetes"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
+	"github.com/dcm-project/k8s-container-service-provider/internal/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +25,8 @@ var _ store.ContainerRepository = (*k8sstore.K8sContainerStore)(nil)
 // newTestStore creates a K8sContainerStore backed by a fake clientset.
 func newTestStore(cfg k8sstore.K8sConfig) (*k8sstore.K8sContainerStore, *fake.Clientset) {
 	client := fake.NewSimpleClientset()
-	s := k8sstore.NewK8sContainerStore(client, cfg)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	s := k8sstore.NewK8sContainerStore(client, cfg, logger)
 	return s, client
 }
 
@@ -81,14 +87,25 @@ func containerWithPorts(name string, ports ...int) v1alpha1.Container {
 // dcmLabels returns the standard DCM labels for a given instance ID.
 func dcmLabels(instanceID string) map[string]string {
 	return map[string]string{
-		"managed-by":       "dcm",
-		"dcm-instance-id":  instanceID,
-		"dcm-service-type": "container",
+		dcm.LabelManagedBy:   dcm.ValueManagedByDCM,
+		dcm.LabelInstanceID:  instanceID,
+		dcm.LabelServiceType: dcm.ValueServiceType,
 	}
 }
 
-// createFakeDeployment creates a Deployment with DCM labels directly in the fake client.
-func createFakeDeployment(client kubernetes.Interface, namespace, name, instanceID string) error {
+// --- Deployment helpers with functional options ---
+
+type fakeDeployOption func(*appsv1.Deployment)
+
+func withDeploymentConditions(conditions []appsv1.DeploymentCondition) fakeDeployOption {
+	return func(d *appsv1.Deployment) { d.Status.Conditions = conditions }
+}
+
+func withDeploymentStatus(status appsv1.DeploymentStatus) fakeDeployOption {
+	return func(d *appsv1.Deployment) { d.Status = status }
+}
+
+func createFakeDeployment(client kubernetes.Interface, namespace, name, instanceID string, opts ...fakeDeployOption) error {
 	labels := dcmLabels(instanceID)
 	replicas := int32(1)
 	deploy := &appsv1.Deployment{
@@ -117,12 +134,26 @@ func createFakeDeployment(client kubernetes.Interface, namespace, name, instance
 			},
 		},
 	}
+	for _, opt := range opts {
+		opt(deploy)
+	}
 	_, err := client.AppsV1().Deployments(namespace).Create(context.Background(), deploy, metav1.CreateOptions{})
 	return err
 }
 
-// createFakePod creates a Pod with DCM labels directly in the fake client.
-func createFakePod(client kubernetes.Interface, namespace, name, instanceID string, phase corev1.PodPhase, podIP string) error {
+// --- Pod helpers with functional options ---
+
+type fakePodOption func(*corev1.Pod)
+
+func withPodConditions(conditions []corev1.PodCondition) fakePodOption {
+	return func(p *corev1.Pod) { p.Status.Conditions = conditions }
+}
+
+func withCreationTime(t time.Time) fakePodOption {
+	return func(p *corev1.Pod) { p.CreationTimestamp = metav1.NewTime(t) }
+}
+
+func createFakePod(client kubernetes.Interface, namespace, name, instanceID string, phase corev1.PodPhase, podIP string, opts ...fakePodOption) error {
 	labels := dcmLabels(instanceID)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -135,12 +166,29 @@ func createFakePod(client kubernetes.Interface, namespace, name, instanceID stri
 			PodIP: podIP,
 		},
 	}
+	for _, opt := range opts {
+		opt(pod)
+	}
 	_, err := client.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	return err
 }
 
-// createFakeService creates a Service with DCM labels directly in the fake client.
-func createFakeService(client kubernetes.Interface, namespace, name, instanceID string, svcType corev1.ServiceType, ports ...int32) error {
+// --- Service helpers with functional options ---
+
+type fakeServiceOption func(*corev1.Service)
+
+func withClusterIP(ip string) fakeServiceOption {
+	return func(svc *corev1.Service) { svc.Spec.ClusterIP = ip }
+}
+
+func withLoadBalancerIP(ip string) fakeServiceOption {
+	return func(svc *corev1.Service) {
+		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
+		svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: ip}}
+	}
+}
+
+func createFakeService(client kubernetes.Interface, namespace, name, instanceID string, svcType corev1.ServiceType, ports []int32, opts ...fakeServiceOption) error {
 	labels := dcmLabels(instanceID)
 	svcPorts := make([]corev1.ServicePort, len(ports))
 	for i, p := range ports {
@@ -162,131 +210,11 @@ func createFakeService(client kubernetes.Interface, namespace, name, instanceID 
 			Ports:    svcPorts,
 		},
 	}
-	_, err := client.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
-	return err
-}
-
-// createFakeServiceWithClusterIP creates a Service with a ClusterIP set in status.
-func createFakeServiceWithClusterIP(client kubernetes.Interface, namespace, name, instanceID string, svcType corev1.ServiceType, clusterIP string, ports ...int32) error {
-	labels := dcmLabels(instanceID)
-	svcPorts := make([]corev1.ServicePort, len(ports))
-	for i, p := range ports {
-		svcPorts[i] = corev1.ServicePort{
-			Port:       p,
-			TargetPort: intstr.FromInt32(p),
-			Protocol:   corev1.ProtocolTCP,
-		}
-	}
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:      svcType,
-			Selector:  labels,
-			Ports:     svcPorts,
-			ClusterIP: clusterIP,
-		},
+	for _, opt := range opts {
+		opt(svc)
 	}
 	_, err := client.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
 	return err
-}
-
-// createFakeLBService creates a LoadBalancer Service with an external IP.
-func createFakeLBService(client kubernetes.Interface, namespace, name, instanceID, externalIP string, ports ...int32) error {
-	labels := dcmLabels(instanceID)
-	svcPorts := make([]corev1.ServicePort, len(ports))
-	for i, p := range ports {
-		svcPorts[i] = corev1.ServicePort{
-			Port:       p,
-			TargetPort: intstr.FromInt32(p),
-			Protocol:   corev1.ProtocolTCP,
-		}
-	}
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:     corev1.ServiceTypeLoadBalancer,
-			Selector: labels,
-			Ports:    svcPorts,
-		},
-		Status: corev1.ServiceStatus{
-			LoadBalancer: corev1.LoadBalancerStatus{
-				Ingress: []corev1.LoadBalancerIngress{
-					{IP: externalIP},
-				},
-			},
-		},
-	}
-	_, err := client.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
-	return err
-}
-
-// createFakeDeploymentWithConditions creates a Deployment with status conditions.
-func createFakeDeploymentWithConditions(client kubernetes.Interface, namespace, name, instanceID string, conditions []appsv1.DeploymentCondition) error {
-	labels := dcmLabels(instanceID)
-	replicas := int32(1)
-	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  name,
-							Image: "nginx:latest",
-						},
-					},
-				},
-			},
-		},
-		Status: appsv1.DeploymentStatus{
-			Conditions: conditions,
-		},
-	}
-	_, err := client.AppsV1().Deployments(namespace).Create(context.Background(), deploy, metav1.CreateOptions{})
-	return err
-}
-
-// createFakePodWithConditions creates a Pod with status conditions.
-func createFakePodWithConditions(client kubernetes.Interface, namespace, name, instanceID string, phase corev1.PodPhase, podIP string, conditions []corev1.PodCondition) error {
-	labels := dcmLabels(instanceID)
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
-		Status: corev1.PodStatus{
-			Phase:      phase,
-			PodIP:      podIP,
-			Conditions: conditions,
-		},
-	}
-	_, err := client.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
-	return err
-}
-
-// boolPtr returns a pointer to the given bool value.
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 // withServiceHints returns a ProviderHints with Kubernetes service hints.
@@ -294,7 +222,7 @@ func withServiceHints(enabled bool, svcType string) *v1alpha1.ProviderHints {
 	hints := &v1alpha1.ProviderHints{
 		Kubernetes: &v1alpha1.KubernetesProviderHints{
 			Service: &v1alpha1.KubernetesServiceHints{
-				Enabled: boolPtr(enabled),
+				Enabled: util.Ptr(enabled),
 			},
 		},
 	}
