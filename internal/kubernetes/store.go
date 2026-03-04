@@ -55,7 +55,7 @@ func (s *K8sContainerStore) enrichFromCluster(
 		enrichWithPod(c, &pods.Items[0])
 	} else if len(pods.Items) > 1 {
 		return &store.ConflictError{
-			InstanceRef: fmt.Sprintf("multiple pods found for container %s", instanceID),
+			Message: fmt.Sprintf("multiple pods found for container %q", instanceID),
 		}
 	} else {
 		pending := v1alpha1.PENDING

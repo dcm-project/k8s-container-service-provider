@@ -103,6 +103,18 @@ var _ = Describe("K8s Store", func() {
 			Expect(errors.As(err, &invalidErr)).To(BeTrue(), "expected InvalidArgumentError, got: %v", err)
 		})
 
+		// TC-I089: List returns empty result when no Deployments exist
+		It("returns empty result when no Deployments exist (TC-I089)", func() {
+			s, _ := newTestStore(defaultConfig())
+
+			result, err := s.List(context.Background(), 10, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).NotTo(BeNil())
+			Expect(result.Containers).NotTo(BeNil())
+			Expect(*result.Containers).To(BeEmpty())
+			Expect(result.NextPageToken).To(BeNil())
+		})
+
 		// TC-I086: List returns error for negative page_token offset
 		It("returns error for negative page_token offset (TC-I086)", func() {
 			s, client := newTestStore(defaultConfig())

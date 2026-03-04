@@ -55,7 +55,7 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 		return nil, err
 	}
 	if len(existing.Items) > 0 {
-		return nil, &store.ConflictError{InstanceRef: id}
+		return nil, &store.ConflictError{Message: fmt.Sprintf("container with instance ID %q already exists", id)}
 	}
 
 	// Determine if a Service should be created.
@@ -78,7 +78,7 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 	_, err = s.client.AppsV1().Deployments(s.cfg.Namespace).Create(ctx, deploy, metav1.CreateOptions{})
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			return nil, &store.ConflictError{InstanceRef: container.Metadata.Name}
+			return nil, &store.ConflictError{Message: fmt.Sprintf("deployment %q already exists", container.Metadata.Name)}
 		}
 		return nil, err
 	}

@@ -65,6 +65,38 @@ var _ = Describe("K8s Store", func() {
 			Expect(svc.Namespace).To(Equal("production"))
 		})
 
+		// TC-I088: Service creation failure triggers Deployment rollback
+		It("rolls back Deployment when Service creation fails (TC-I088)", func() {
+			cfg := serviceEnabledConfig()
+			client := fake.NewSimpleClientset()
+			s := k8sstore.NewK8sContainerStore(client, cfg)
+
+			// Inject a Service creation error
+			client.PrependReactor("create", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, fmt.Errorf("simulated service creation failure")
+			})
+
+			c := containerWithPorts("my-app", 8080)
+			_, err := s.Create(context.Background(), c, "test-id-088")
+
+			// Error should propagate
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("simulated service creation failure"))
+
+			// Error must NOT be a typed store error (it's a raw infra error)
+			var notFoundErr *store.NotFoundError
+			var conflictErr *store.ConflictError
+			Expect(errors.As(err, &notFoundErr)).To(BeFalse())
+			Expect(errors.As(err, &conflictErr)).To(BeFalse())
+
+			// Verify rollback: Deployment should have been deleted
+			deployList, listErr := client.AppsV1().Deployments("default").List(
+				context.Background(), metav1.ListOptions{},
+			)
+			Expect(listErr).NotTo(HaveOccurred())
+			Expect(deployList.Items).To(BeEmpty(), "Deployment should be rolled back after Service creation failure")
+		})
+
 		// TC-I081: Unexpected K8s API error produces internal store error
 		It("produces internal store error on unexpected K8s API error (TC-I081)", func() {
 			cfg := defaultConfig()

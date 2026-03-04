@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +22,7 @@ func (s *K8sContainerStore) Delete(ctx context.Context, containerID string) erro
 		return &store.NotFoundError{ID: containerID}
 	}
 	if len(deploys.Items) > 1 {
-		return &store.ConflictError{InstanceRef: containerID}
+		return &store.ConflictError{Message: fmt.Sprintf("multiple deployments found for container %q", containerID)}
 	}
 	deploy := &deploys.Items[0]
 

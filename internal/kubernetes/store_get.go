@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
@@ -21,7 +22,7 @@ func (s *K8sContainerStore) Get(ctx context.Context, containerID string) (*v1alp
 		return nil, &store.NotFoundError{ID: containerID}
 	}
 	if len(deploys.Items) > 1 {
-		return nil, &store.ConflictError{InstanceRef: containerID}
+		return nil, &store.ConflictError{Message: fmt.Sprintf("multiple deployments found for container %q", containerID)}
 	}
 
 	deploy := &deploys.Items[0]

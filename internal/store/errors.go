@@ -13,11 +13,11 @@ func (e *NotFoundError) Error() string {
 
 // ConflictError indicates a resource conflict (e.g., duplicate name or ID).
 type ConflictError struct {
-	InstanceRef string
+	Message string
 }
 
 func (e *ConflictError) Error() string {
-	return fmt.Sprintf("container %q already exists", e.InstanceRef)
+	return e.Message
 }
 
 // InvalidArgumentError indicates a validation failure in the request.
