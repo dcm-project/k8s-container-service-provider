@@ -140,6 +140,22 @@ var _ = Describe("K8s Store", func() {
 			Expect(result.UpdateTime.UTC()).To(Equal(transitionTime))
 		})
 
+		// TC-I078: Get returns conflict when multiple Deployments share the same instance ID
+		It("returns conflict when multiple Deployments share the same instance ID (TC-I078)", func() {
+			s, client := newTestStore(defaultConfig())
+
+			// Create two Deployments with the same instance ID but different names
+			err := createFakeDeployment(client, "default", "app-one", "dup-id")
+			Expect(err).NotTo(HaveOccurred())
+			err = createFakeDeployment(client, "default", "app-two", "dup-id")
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = s.Get(context.Background(), "dup-id")
+
+			var conflictErr *store.ConflictError
+			Expect(errors.As(err, &conflictErr)).To(BeTrue(), "expected ConflictError, got: %v", err)
+		})
+
 		// TC-I077: Get returns container without service data when no Service
 		It("returns container without service data when no Service (TC-I077)", func() {
 			s, client := newTestStore(defaultConfig())

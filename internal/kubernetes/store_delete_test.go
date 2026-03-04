@@ -58,6 +58,27 @@ var _ = Describe("K8s Store", func() {
 			Expect(deployErr).To(HaveOccurred())
 		})
 
+		// TC-I079: Delete returns conflict when multiple Deployments share the same instance ID
+		It("returns conflict when multiple Deployments share the same instance ID (TC-I079)", func() {
+			s, client := newTestStore(defaultConfig())
+
+			// Create two Deployments with the same instance ID but different names
+			err := createFakeDeployment(client, "default", "app-one", "dup-id")
+			Expect(err).NotTo(HaveOccurred())
+			err = createFakeDeployment(client, "default", "app-two", "dup-id")
+			Expect(err).NotTo(HaveOccurred())
+
+			err = s.Delete(context.Background(), "dup-id")
+
+			var conflictErr *store.ConflictError
+			Expect(errors.As(err, &conflictErr)).To(BeTrue(), "expected ConflictError, got: %v", err)
+
+			// Verify neither Deployment was deleted
+			deployList, listErr := client.AppsV1().Deployments("default").List(context.Background(), metav1.ListOptions{})
+			Expect(listErr).NotTo(HaveOccurred())
+			Expect(deployList.Items).To(HaveLen(2))
+		})
+
 		// TC-I039: Delete returns not-found for non-existent container
 		It("returns not-found for non-existent container (TC-I039)", func() {
 			s, _ := newTestStore(defaultConfig())

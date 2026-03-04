@@ -20,6 +20,9 @@ func (s *K8sContainerStore) Get(ctx context.Context, containerID string) (*v1alp
 	if len(deploys.Items) == 0 {
 		return nil, &store.NotFoundError{ID: containerID}
 	}
+	if len(deploys.Items) > 1 {
+		return nil, &store.ConflictError{InstanceRef: containerID}
+	}
 
 	deploy := &deploys.Items[0]
 	result := containerFromDeployment(deploy, containerID)

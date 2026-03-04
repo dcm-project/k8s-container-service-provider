@@ -20,7 +20,9 @@ func (s *K8sContainerStore) Delete(ctx context.Context, containerID string) erro
 	if len(deploys.Items) == 0 {
 		return &store.NotFoundError{ID: containerID}
 	}
-
+	if len(deploys.Items) > 1 {
+		return &store.ConflictError{InstanceRef: containerID}
+	}
 	deploy := &deploys.Items[0]
 
 	// 2. Delete Deployment.
