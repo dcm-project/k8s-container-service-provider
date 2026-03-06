@@ -57,12 +57,11 @@ func run(logger *slog.Logger) error {
 	}
 	k8sCfg := k8s.K8sConfig{
 		Namespace:          cfg.Kubernetes.Namespace,
-		CreateService:      cfg.Kubernetes.CreateService,
 		DefaultServiceType: cfg.Kubernetes.DefaultServiceType,
 	}
 	store := k8s.NewK8sContainerStore(k8sClient, k8sCfg, logger)
 
-	containerHandler := containerhandler.NewHandler(store, k8sCfg.Namespace, logger)
+	containerHandler := containerhandler.NewHandler(store, logger)
 	containerAdapter := oapigen.NewStrictHandlerWithOptions(containerHandler, nil, oapigen.StrictHTTPServerOptions{})
 
 	h := handlers.New(logger, time.Now(), version, containerAdapter)

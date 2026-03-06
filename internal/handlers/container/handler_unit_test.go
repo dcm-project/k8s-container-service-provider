@@ -27,7 +27,7 @@ var _ = Describe("Container API Handlers", func() {
 
 	BeforeEach(func() {
 		repo = &mockContainerRepository{}
-		h = container.NewHandler(repo, testNamespace, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+		h = container.NewHandler(repo, slog.New(slog.NewJSONHandler(io.Discard, nil)))
 	})
 
 	// -----------------------------------------------------------------------
@@ -128,7 +128,6 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(ok).To(BeTrue(), "expected 400 response for invalid ID %q", invalidID)
 					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
 				},
-				Entry("starts with digit", "123-starts-digit"),
 				Entry("leading dash", "-leading-dash"),
 				Entry("trailing dash", "trailing-"),
 				Entry("has underscore", "has_underscore"),
@@ -160,6 +159,8 @@ var _ = Describe("Container API Handlers", func() {
 				Entry("max length (63 chars)", strings.Repeat("a", 63)),
 				Entry("with hyphens", "a-b"),
 				Entry("letters and digits", "a0"),
+				Entry("starts with digit", "1abc"),
+				Entry("UUID format", "550e8400-e29b-41d4-a716-446655440000"),
 			)
 		})
 

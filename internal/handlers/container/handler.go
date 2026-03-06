@@ -13,17 +13,15 @@ import (
 // operations. It delegates persistence to a store.ContainerRepository and maps
 // store errors to typed OpenAPI responses.
 type Handler struct {
-	store     store.ContainerRepository
-	namespace string
-	logger    *slog.Logger
+	store  store.ContainerRepository
+	logger *slog.Logger
 }
 
 // NewHandler creates a Handler backed by the given repository.
-func NewHandler(repo store.ContainerRepository, namespace string, logger *slog.Logger) *Handler {
+func NewHandler(repo store.ContainerRepository, logger *slog.Logger) *Handler {
 	return &Handler{
-		store:     repo,
-		namespace: namespace,
-		logger:    logger,
+		store:  repo,
+		logger: logger,
 	}
 }
 

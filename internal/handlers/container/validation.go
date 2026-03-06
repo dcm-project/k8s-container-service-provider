@@ -10,9 +10,9 @@ import (
 )
 
 // containerIDPattern enforces AEP-122 resource ID format:
-// must start with a lowercase letter, contain only lowercase letters, digits,
-// and hyphens, and be 1–63 characters long.
-var containerIDPattern = regexp.MustCompile(`^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$`)
+// must start with a lowercase letter or digit, contain only lowercase letters,
+// digits, and hyphens, and be 1–63 characters long.
+var containerIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 func validateContainerID(id string) error {
 	if !containerIDPattern.MatchString(id) {
