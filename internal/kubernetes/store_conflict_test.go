@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	k8sstore "github.com/dcm-project/k8s-container-service-provider/internal/kubernetes"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -47,11 +48,10 @@ var _ = Describe("K8s Store", func() {
 		It("creates all resources in the configured namespace (TC-I029)", func() {
 			cfg := k8sstore.K8sConfig{
 				Namespace:          "production",
-				CreateService:      true,
 				DefaultServiceType: "ClusterIP",
 			}
 			s, client := newTestStore(cfg)
-			c := containerWithPorts("my-app", 8080)
+			c := containerWithVisiblePorts("my-app", v1alpha1.Internal, 8080)
 
 			_, err := s.Create(context.Background(), c, "test-id-029")
 			Expect(err).NotTo(HaveOccurred())
@@ -69,7 +69,7 @@ var _ = Describe("K8s Store", func() {
 
 		// TC-I088: Service creation failure triggers Deployment rollback
 		It("rolls back Deployment when Service creation fails (TC-I088)", func() {
-			cfg := serviceEnabledConfig()
+			cfg := defaultConfig()
 			client := fake.NewSimpleClientset()
 			logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 			s := k8sstore.NewK8sContainerStore(client, cfg, logger)
@@ -79,7 +79,7 @@ var _ = Describe("K8s Store", func() {
 				return true, nil, fmt.Errorf("simulated service creation failure")
 			})
 
-			c := containerWithPorts("my-app", 8080)
+			c := containerWithVisiblePorts("my-app", v1alpha1.Internal, 8080)
 			_, err := s.Create(context.Background(), c, "test-id-088")
 
 			// Error should propagate

@@ -10,7 +10,6 @@ import (
 	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
 	k8sstore "github.com/dcm-project/k8s-container-service-provider/internal/kubernetes"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
-	"github.com/dcm-project/k8s-container-service-provider/internal/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,16 +33,6 @@ func newTestStore(cfg k8sstore.K8sConfig) (*k8sstore.K8sContainerStore, *fake.Cl
 func defaultConfig() k8sstore.K8sConfig {
 	return k8sstore.K8sConfig{
 		Namespace:          "default",
-		CreateService:      false,
-		DefaultServiceType: "ClusterIP",
-	}
-}
-
-// serviceEnabledConfig returns a K8sConfig with Service creation enabled.
-func serviceEnabledConfig() k8sstore.K8sConfig {
-	return k8sstore.K8sConfig{
-		Namespace:          "default",
-		CreateService:      true,
 		DefaultServiceType: "ClusterIP",
 	}
 }
@@ -71,15 +60,34 @@ func minimalContainer(name string) v1alpha1.Container {
 	}
 }
 
-// containerWithPorts creates a container with the specified network ports.
+// containerWithPorts creates a container with the specified network ports (visibility=none).
 func containerWithPorts(name string, ports ...int) v1alpha1.Container {
 	c := minimalContainer(name)
 	containerPorts := make([]v1alpha1.ContainerPort, len(ports))
 	for i, p := range ports {
-		containerPorts[i] = v1alpha1.ContainerPort{ContainerPort: p}
+		containerPorts[i] = v1alpha1.ContainerPort{
+			ContainerPort: p,
+			Visibility:    v1alpha1.None,
+		}
 	}
 	c.Network = &v1alpha1.ContainerNetwork{
-		Ports: containerPorts,
+		Ports: &containerPorts,
+	}
+	return c
+}
+
+// containerWithVisiblePorts creates a container where all ports share the given visibility.
+func containerWithVisiblePorts(name string, visibility v1alpha1.ContainerPortVisibility, ports ...int) v1alpha1.Container {
+	c := minimalContainer(name)
+	containerPorts := make([]v1alpha1.ContainerPort, len(ports))
+	for i, p := range ports {
+		containerPorts[i] = v1alpha1.ContainerPort{
+			ContainerPort: p,
+			Visibility:    visibility,
+		}
+	}
+	c.Network = &v1alpha1.ContainerNetwork{
+		Ports: &containerPorts,
 	}
 	return c
 }
@@ -217,18 +225,3 @@ func createFakeService(client kubernetes.Interface, namespace, name, instanceID 
 	return err
 }
 
-// withServiceHints returns a ProviderHints with Kubernetes service hints.
-func withServiceHints(enabled bool, svcType string) *v1alpha1.ProviderHints {
-	hints := &v1alpha1.ProviderHints{
-		Kubernetes: &v1alpha1.KubernetesProviderHints{
-			Service: &v1alpha1.KubernetesServiceHints{
-				Enabled: util.Ptr(enabled),
-			},
-		},
-	}
-	if svcType != "" {
-		t := v1alpha1.KubernetesServiceHintsType(svcType)
-		hints.Kubernetes.Service.Type = &t
-	}
-	return hints
-}

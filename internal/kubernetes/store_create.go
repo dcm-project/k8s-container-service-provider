@@ -12,31 +12,42 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// shouldCreateService determines whether a Kubernetes Service should be created.
-// ProviderHints override the config default when explicitly set.
-func shouldCreateService(cfg K8sConfig, hints *v1alpha1.ProviderHints) bool {
-	if hints != nil && hints.Kubernetes != nil && hints.Kubernetes.Service != nil && hints.Kubernetes.Service.Enabled != nil {
-		return *hints.Kubernetes.Service.Enabled
+// portsWithVisibility returns the subset of ports whose visibility is not "none".
+// Returns nil if no qualifying ports exist.
+func portsWithVisibility(container v1alpha1.Container) []v1alpha1.ContainerPort {
+	if container.Network == nil || container.Network.Ports == nil {
+		return nil
 	}
-	return cfg.CreateService
+	var result []v1alpha1.ContainerPort
+	for _, p := range *container.Network.Ports {
+		if p.Visibility != v1alpha1.None {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
-// resolveServiceType determines the Kubernetes Service type to use.
-// ProviderHints override the config default when explicitly set.
-func resolveServiceType(cfg K8sConfig, hints *v1alpha1.ProviderHints) corev1.ServiceType {
-	if hints != nil && hints.Kubernetes != nil && hints.Kubernetes.Service != nil && hints.Kubernetes.Service.Type != nil {
-		return corev1.ServiceType(*hints.Kubernetes.Service.Type)
+// hasExternalPort returns true if any port has visibility "external".
+func hasExternalPort(ports []v1alpha1.ContainerPort) bool {
+	for _, p := range ports {
+		if p.Visibility == v1alpha1.External {
+			return true
+		}
 	}
-	return corev1.ServiceType(cfg.DefaultServiceType)
+	return false
 }
 
-// hasPorts returns true if the container has at least one network port defined.
-func hasPorts(container v1alpha1.Container) bool {
-	return container.Network != nil && len(container.Network.Ports) > 0
+// resolveServiceType determines the Kubernetes Service type based on port visibility.
+// If any port is external, use the configured DefaultServiceType; otherwise ClusterIP.
+func resolveServiceType(cfg K8sConfig, ports []v1alpha1.ContainerPort) corev1.ServiceType {
+	if hasExternalPort(ports) {
+		return corev1.ServiceType(cfg.DefaultServiceType)
+	}
+	return corev1.ServiceTypeClusterIP
 }
 
 // Create creates a new container backed by a Kubernetes Deployment (and
-// optionally a Service).
+// optionally a Service when ports have non-none visibility).
 func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Container, id string) (*v1alpha1.Container, error) {
 	labels := dcmLabels(id)
 	if container.Metadata.Labels != nil {
@@ -54,15 +65,8 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 		return nil, &store.ConflictError{Message: fmt.Sprintf("container with instance ID %q already exists", id)}
 	}
 
-	// Determine if a Service should be created.
-	createSvc := shouldCreateService(s.cfg, container.ProviderHints)
-
-	// If Service needed but no ports, fail BEFORE creating Deployment (atomicity).
-	if createSvc && !hasPorts(container) {
-		return nil, &store.InvalidArgumentError{
-			Message: "service creation requires at least one port to be defined",
-		}
-	}
+	// Determine which ports need a Service (visibility != none).
+	servicePorts := portsWithVisibility(container)
 
 	// Create Deployment.
 	deploy := buildDeployment(container, id, s.cfg, labels)
@@ -74,16 +78,13 @@ func (s *K8sContainerStore) Create(ctx context.Context, container v1alpha1.Conta
 		return nil, err
 	}
 
-	// Create Service if needed.
-	if createSvc {
-		svcType := resolveServiceType(s.cfg, container.ProviderHints)
-		svc := buildService(container, id, s.cfg, labels, svcType)
+	// Create Service if any ports have non-none visibility.
+	if len(servicePorts) > 0 {
+		svcType := resolveServiceType(s.cfg, servicePorts)
+		svc := buildService(container, id, s.cfg, labels, svcType, servicePorts)
 		_, err = s.client.CoreV1().Services(s.cfg.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 		if err != nil {
 			// Rollback: delete the just-created Deployment.
-			// Use context.WithoutCancel with a timeout so the rollback
-			// completes even if the original context was cancelled, but
-			// doesn't hang indefinitely on a degraded cluster.
 			propagation := metav1.DeletePropagationBackground
 			rollbackCtx, rollbackCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 			defer rollbackCancel()

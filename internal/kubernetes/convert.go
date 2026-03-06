@@ -65,12 +65,16 @@ func containerFromDeployment(deploy *appsv1.Deployment, instanceID string) (v1al
 	}
 
 	// Reconstruct network ports if present.
+	// Visibility is set to "none" by default; enrichWithService will update it later.
 	if len(k8sC.Ports) > 0 {
 		ports := make([]v1alpha1.ContainerPort, len(k8sC.Ports))
 		for i, p := range k8sC.Ports {
-			ports[i] = v1alpha1.ContainerPort{ContainerPort: int(p.ContainerPort)}
+			ports[i] = v1alpha1.ContainerPort{
+				ContainerPort: int(p.ContainerPort),
+				Visibility:    v1alpha1.None,
+			}
 		}
-		c.Network = &v1alpha1.ContainerNetwork{Ports: ports}
+		c.Network = &v1alpha1.ContainerNetwork{Ports: &ports}
 	}
 
 	// Reconstruct user labels by filtering out DCM reserved labels.
@@ -158,7 +162,8 @@ func enrichWithPod(container *v1alpha1.Container, pod *corev1.Pod) {
 	}
 }
 
-// enrichWithService populates service info from a Kubernetes Service.
+// enrichWithService populates service info from a Kubernetes Service and
+// infers port visibility from the Service state.
 func enrichWithService(container *v1alpha1.Container, svc *corev1.Service) {
 	info := &v1alpha1.ServiceInfo{}
 
@@ -169,6 +174,8 @@ func enrichWithService(container *v1alpha1.Container, svc *corev1.Service) {
 	svcType := v1alpha1.ServiceInfoType(svc.Spec.Type)
 	info.Type = &svcType
 
+	// Build a set of target ports exposed by the Service.
+	svcTargetPorts := make(map[int]bool)
 	if len(svc.Spec.Ports) > 0 {
 		ports := make([]v1alpha1.ServicePort, len(svc.Spec.Ports))
 		for i, p := range svc.Spec.Ports {
@@ -178,6 +185,7 @@ func enrichWithService(container *v1alpha1.Container, svc *corev1.Service) {
 				TargetPort: p.TargetPort.IntValue(),
 				Protocol:   &protocol,
 			}
+			svcTargetPorts[p.TargetPort.IntValue()] = true
 		}
 		info.Ports = &ports
 	}
@@ -187,6 +195,29 @@ func enrichWithService(container *v1alpha1.Container, svc *corev1.Service) {
 	}
 
 	container.Service = info
+
+	// Infer port visibility from Service state.
+	if container.Network != nil && container.Network.Ports != nil {
+		visibility := inferVisibility(svc.Spec.Type)
+		ports := *container.Network.Ports
+		for i := range ports {
+			if svcTargetPorts[ports[i].ContainerPort] {
+				ports[i].Visibility = visibility
+			}
+			// Ports not in the Service keep their default (none).
+		}
+		container.Network.Ports = &ports
+	}
+}
+
+// inferVisibility maps a K8s Service type to a port visibility value.
+func inferVisibility(svcType corev1.ServiceType) v1alpha1.ContainerPortVisibility {
+	switch svcType {
+	case corev1.ServiceTypeLoadBalancer, corev1.ServiceTypeNodePort:
+		return v1alpha1.External
+	default:
+		return v1alpha1.Internal
+	}
 }
 
 // latestPodTransitionTime returns the most recent LastTransitionTime from Pod conditions.
@@ -265,9 +296,9 @@ func buildDeployment(container v1alpha1.Container, id string, cfg K8sConfig, lab
 		}
 	}
 
-	if container.Network != nil && len(container.Network.Ports) > 0 {
-		ports := make([]corev1.ContainerPort, len(container.Network.Ports))
-		for i, p := range container.Network.Ports {
+	if container.Network != nil && container.Network.Ports != nil && len(*container.Network.Ports) > 0 {
+		ports := make([]corev1.ContainerPort, len(*container.Network.Ports))
+		for i, p := range *container.Network.Ports {
 			ports[i] = corev1.ContainerPort{
 				ContainerPort: int32(p.ContainerPort),
 			}
@@ -299,12 +330,13 @@ func buildDeployment(container v1alpha1.Container, id string, cfg K8sConfig, lab
 }
 
 // buildService creates a Kubernetes Service from a Container spec.
-func buildService(container v1alpha1.Container, id string, cfg K8sConfig, labels map[string]string, svcType corev1.ServiceType) *corev1.Service {
+// servicePorts contains only the ports with non-none visibility.
+func buildService(container v1alpha1.Container, id string, cfg K8sConfig, labels map[string]string, svcType corev1.ServiceType, servicePorts []v1alpha1.ContainerPort) *corev1.Service {
 	// Selector uses only DCM labels
 	selectorLabels := dcmLabels(id)
 
-	svcPorts := make([]corev1.ServicePort, len(container.Network.Ports))
-	for i, p := range container.Network.Ports {
+	svcPorts := make([]corev1.ServicePort, len(servicePorts))
+	for i, p := range servicePorts {
 		svcPorts[i] = corev1.ServicePort{
 			Name:       fmt.Sprintf("port-%d", p.ContainerPort),
 			Port:       int32(p.ContainerPort),
