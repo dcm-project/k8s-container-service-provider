@@ -1,9 +1,8 @@
 package kubernetes
 
 import (
-	"fmt"
-
 	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 // dcmLabels returns the standard DCM labels for a given instance ID.
@@ -16,27 +15,26 @@ func dcmLabels(instanceID string) map[string]string {
 }
 
 // mergeLabels merges DCM base labels with user labels into a new map.
-// User labels are written first, then DCM labels overwrite — DCM labels
-// always win on collision (defense-in-depth against label corruption).
+// Base labels overwrite user labels on collision — DCM labels always win
+// (defense-in-depth against label corruption).
 func mergeLabels(base, user map[string]string) map[string]string {
-	merged := make(map[string]string, len(base)+len(user))
-	for k, v := range user {
-		merged[k] = v
-	}
-	for k, v := range base {
-		merged[k] = v
-	}
-	return merged
+	return labels.Merge(labels.Set(user), labels.Set(base))
 }
 
 // instanceSelector returns a label selector string that matches a specific
 // DCM instance by ID.
 func instanceSelector(instanceID string) string {
-	return fmt.Sprintf("%s=%s,%s=%s", dcm.LabelInstanceID, instanceID, dcm.LabelManagedBy, dcm.ValueManagedByDCM)
+	return labels.Set{
+		dcm.LabelInstanceID: instanceID,
+		dcm.LabelManagedBy:  dcm.ValueManagedByDCM,
+	}.String()
 }
 
 // dcmSelector returns a label selector string that matches all DCM-managed
 // container resources.
 func dcmSelector() string {
-	return fmt.Sprintf("%s=%s,%s=%s", dcm.LabelManagedBy, dcm.ValueManagedByDCM, dcm.LabelServiceType, dcm.ValueServiceType)
+	return labels.Set{
+		dcm.LabelManagedBy:   dcm.ValueManagedByDCM,
+		dcm.LabelServiceType: dcm.ValueServiceType,
+	}.String()
 }
