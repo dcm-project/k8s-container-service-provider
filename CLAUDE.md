@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-DCM (Data Center Management) service provider that manages containers in Kubernetes clusters via a REST API following AEP (API Enhancement Proposals) standards. It maps the container API to Kubernetes Deployments/Pods/Services.
+DCM (Data Center Management) is a service provider that manages containers in Kubernetes clusters via a REST API following AEP (API Enhancement Proposals) standards. It maps the container API to Kubernetes Deployments/Pods/Services.
 
 **Module:** `github.com/dcm-project/k8s-container-service-provider`
 
@@ -34,7 +34,7 @@ go run github.com/onsi/ginkgo/v2/ginkgo -r -v -focus "TC-U009" internal/handlers
 
 ### OpenAPI-first code generation
 
-The API is defined in `api/v1alpha1/openapi.yaml`. All request/response types, server interfaces, embedded spec, and HTTP client are generated from it using `oapi-codegen`. After modifying the OpenAPI spec, run `make generate-api`. CI enforces generated code is up-to-date.
+The API is defined in `api/v1alpha1/openapi.yaml`. All request/response types, server interfaces, embedded spec, and HTTP client are generated from it using `oapi-codegen`. After modifying the OpenAPI spec, run `make generate-api`. CI enforces that the generated code is up to date.
 
 Generated files (do not edit manually):
 - `api/v1alpha1/types.gen.go` — data models
@@ -44,7 +44,7 @@ Generated files (do not edit manually):
 
 ### Request flow
 
-`main.go` → HTTP server (`internal/apiserver/`) with middleware (recovery, OpenAPI request validation) → composite handler (`internal/handlers/handler.go`) delegates to sub-handlers (health, container) → container handler (`internal/handlers/container/`) validates business rules → store interface (`internal/store/repository.go`) → Kubernetes implementation (`internal/kubernetes/`)
+`main.go` → HTTP server (`internal/apiserver/`) with middleware (recovery, OpenAPI request validation) → container handler (`internal/handlers/container/`) implements `StrictServerInterface`, validates business rules → store interface (`internal/store/repository.go`) → Kubernetes implementation (`internal/kubernetes/`)
 
 ### Key patterns
 
@@ -52,7 +52,7 @@ Generated files (do not edit manually):
 - **Repository pattern**: `internal/store/repository.go` defines `ContainerRepository`. The Kubernetes implementation in `internal/kubernetes/` maps containers to Deployments. Custom error types (`NotFoundError`, `ConflictError`, `InvalidArgumentError`) in `internal/store/errors.go` drive HTTP status code mapping in handlers.
 - **RFC 7807 errors**: All error responses use Problem Details format with types like `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`.
 - **Handler validation**: `internal/handlers/container/validation.go` validates business rules (CPU/memory min≤max, reserved label keys, container ID format per AEP-122).
-- **Config**: Environment variables with `SP_` prefix parsed via `caarlos0/env` into structs in `internal/config/`.
+- **Config**: Environment variables with `SP_` prefix are parsed via `caarlos0/env` into structs in `internal/config/`.
 
 ### Testing
 
