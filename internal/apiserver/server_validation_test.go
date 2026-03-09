@@ -176,4 +176,21 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			`{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{}}`,
 			"network object without ports field"),
 	)
+
+	// TC-U067: valid request passes OpenAPI middleware and reaches handler.
+	It("passes a valid request through OpenAPI middleware (TC-U067)", func() {
+		baseURL := startValidationServer()
+
+		body := `{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`
+		resp, err := http.Post(
+			baseURL+"/api/v1alpha1/containers",
+			"application/json",
+			strings.NewReader(body),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close()
+
+		Expect(resp.StatusCode).To(Equal(http.StatusNotImplemented),
+			"valid request should pass middleware and reach the Unimplemented handler (501)")
+	})
 })

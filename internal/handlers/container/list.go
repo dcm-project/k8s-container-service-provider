@@ -7,6 +7,10 @@ import (
 )
 
 func (h *Handler) ListContainers(ctx context.Context, req oapigen.ListContainersRequestObject) (oapigen.ListContainersResponseObject, error) {
+	// maxPageSize validation chain:
+	//   - OpenAPI middleware enforces max_page_size ∈ [1,1000] (invalid → 400).
+	//   - When omitted (nil), 0 is passed to the store which defaults to 50.
+	// No handler-layer clamping is needed.
 	var maxPageSize int32
 	if req.Params.MaxPageSize != nil {
 		maxPageSize = *req.Params.MaxPageSize

@@ -6,7 +6,7 @@
 - **Related Requirements:** REQ-HTTP-050, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–090, REQ-MON-110–120, REQ-MON-150, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–020, REQ-XC-CFG-010
 - **Framework:** Ginkgo v2 + Gomega
 - **Created:** 2026-02-17
-- **Last Updated:** 2026-02-18 (sync update: TC-U060, REQ-XC-* coverage)
+- **Last Updated:** 2026-03-09 (added TC-U067, TC-U068; updated coverage matrix)
 
 Unit tests verify individual components in isolation. All external dependencies
 (ContainerRepository, K8s client, NATS, HTTP server) are replaced with mocks,
@@ -765,6 +765,26 @@ dedicated test class or `Describe` block.
 - **Then:** The response is HTTP 200 with `Content-Type: application/json`, valid JSON body containing `status: "healthy"` and the configured version
 - **Referenced by:** TC-U005 (health handler unit tests)
 
+#### TC-U067: Valid request passes OpenAPI middleware
+
+- **Requirement:** REQ-API-090, REQ-HTTP-090
+- **Priority:** High
+- **Type:** Unit (validation sub-case)
+- **Given:** A valid container request body with all required fields
+- **When:** POST `/api/v1alpha1/containers` is sent through the OpenAPI validation middleware
+- **Then:** The request passes validation and reaches the handler (501 from Unimplemented stub)
+- **Referenced by:** TC-U014 (CreateContainer validates request body)
+
+#### TC-U068: containerIDPattern matches OpenAPI spec pattern
+
+- **Requirement:** REQ-API-050
+- **Priority:** High
+- **Type:** Unit (contract test)
+- **Given:** The embedded OpenAPI spec returned by `v1alpha1.GetSwagger()`
+- **When:** The `id` query parameter pattern from `POST /api/v1alpha1/containers` is extracted
+- **Then:** It matches `containerIDPattern.String()` exactly
+- **Referenced by:** TC-U012 (CreateContainer rejects invalid IDs), TC-U047 (valid boundary IDs)
+
 #### TC-U065: Unimplemented endpoints return 501
 
 - **Requirement:** REQ-API-010
@@ -781,7 +801,7 @@ dedicated test class or `Describe` block.
 | Requirement   | Test Cases                        | Status  |
 |---------------|-----------------------------------|---------|
 | REQ-HTTP-050  | TC-U002, TC-U004                  | Covered |
-| REQ-HTTP-090  | TC-U057 (via TC-I008), TC-U058 (via TC-I008) | Covered |
+| REQ-HTTP-090  | TC-U057 (via TC-I008), TC-U058 (via TC-I008), TC-U067 (via TC-U014) | Covered |
 | REQ-HLT-010   | TC-U005, TC-U064                  | Covered |
 | REQ-HLT-020   | TC-U005, TC-U006                  | Covered |
 | REQ-HLT-030   | TC-U005                           | Covered |
@@ -790,11 +810,11 @@ dedicated test class or `Describe` block.
 | REQ-API-020   | TC-U009                           | Covered |
 | REQ-API-030   | TC-U010                           | Covered |
 | REQ-API-040   | TC-U011                           | Covered |
-| REQ-API-050   | TC-U012, TC-U047                  | Covered |
+| REQ-API-050   | TC-U012, TC-U047, TC-U068         | Covered |
 | REQ-API-060   | TC-U009                           | Covered |
 | REQ-API-070   | TC-U009                           | Covered |
 | REQ-API-080   | TC-U013, TC-U046                  | Covered |
-| REQ-API-090   | TC-U014, TC-U048, TC-U049, TC-U052–TC-U056, TC-U059 | Covered |
+| REQ-API-090   | TC-U014, TC-U048, TC-U049, TC-U052–TC-U056, TC-U059, TC-U067 (via TC-U014) | Covered |
 | REQ-API-100   | TC-U015, TC-U050                  | Covered |
 | REQ-API-110   | TC-U016                           | Covered |
 | REQ-API-120   | TC-U017                           | Covered |
@@ -826,7 +846,7 @@ dedicated test class or `Describe` block.
 | REQ-REG-070   | TC-U061                           | Covered |
 | REQ-XC-CFG-010| TC-U002, TC-U004, TC-U063         | Covered |
 
-**Total:** 63 test case IDs — 33 in behavioural test classes, 30 in the utility
+**Total:** 65 test case IDs — 33 in behavioural test classes, 32 in the utility
 index (tested transitively through higher-level behavioural and integration
 tests).
 
@@ -845,4 +865,4 @@ tests).
 - **Compile-time checks:** TC-U008 and TC-U024 are implemented as `var _ StrictServerInterface = (*Handler)(nil)` in their respective test files. They do not need their own `It` block.
 - **Time-sensitive tests:** TC-U006 depends on time. Use a clock interface or inject a time function to avoid flaky tests.
 - **REQ-HLT-040 (lightweight):** TC-U007 verifies the handler's structural simplicity. Runtime performance is a design constraint validated during code review, not a functional test.
-- **Utility transitive coverage:** Utility TCs (TC-U007/U008/U024–U030/U036–U045/U052–U059) have no dedicated `Describe` blocks. Their coverage is achieved through the behavioural tests that reference them. The integration test plan documents the corresponding integration-level transitive references.
+- **Utility transitive coverage:** Utility TCs (TC-U007/U008/U024–U030/U036–U045/U052–U059/U067–U068) have no dedicated `Describe` blocks. Their coverage is achieved through the behavioural tests that reference them. The integration test plan documents the corresponding integration-level transitive references.

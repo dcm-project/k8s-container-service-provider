@@ -59,6 +59,8 @@ Generated files (do not edit manually):
 - **Framework**: Ginkgo v2 (BDD) + Gomega assertions
 - **Test naming**: Files use `_unit_test.go` / `_integration_test.go` suffixes. Test cases carry `TC-XXXX` identifiers.
 - **Mocks**: Hand-written function-field mocks (e.g., `mockContainerRepository` with `CreateFunc`, `GetFunc`, etc.) — no mocking framework.
+- **Spec first**: New requirements (REQ-*) and acceptance criteria (AC-*) MUST be added to the spec file(s) in `.ai/specs/` before any implementation or test planning begins.
+- **Test plan first**: New test cases (TC-*) MUST be registered in the test plan (`.ai/test-plans/`) with mappings to REQ-* and AC-* from the spec before being implemented in code.
 
 ### Linting
 
