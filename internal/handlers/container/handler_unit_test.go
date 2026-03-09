@@ -201,6 +201,35 @@ var _ = Describe("Container API Handlers", func() {
 
 		Context("request validation", func() {
 
+			// TC-U069: accepts and propagates non-reserved user labels
+			It("accepts and propagates non-reserved user labels (TC-U069)", func() {
+				body := validCreateBody()
+				inputLabels := map[string]string{"team": "platform", "env": "dev"}
+				body.Metadata.Labels = &inputLabels
+
+				var capturedContainer v1alpha1.Container
+				repo.CreateFunc = func(_ context.Context, c v1alpha1.Container, id string) (*v1alpha1.Container, error) {
+					capturedContainer = c
+					return newContainerResult(c, id, testNamespace), nil
+				}
+
+				req := oapigen.CreateContainerRequestObject{
+					Body: &body,
+				}
+
+				resp, err := h.CreateContainer(context.Background(), req)
+				Expect(err).NotTo(HaveOccurred())
+
+				created, ok := resp.(oapigen.CreateContainer201JSONResponse)
+				Expect(ok).To(BeTrue(), "expected CreateContainer201JSONResponse")
+
+				Expect(capturedContainer.Metadata.Labels).NotTo(BeNil(), "labels must reach the store")
+				Expect(*capturedContainer.Metadata.Labels).To(Equal(inputLabels))
+
+				Expect(created.Metadata.Labels).NotTo(BeNil(), "labels must be in the response")
+				Expect(*created.Metadata.Labels).To(Equal(inputLabels))
+			})
+
 			// TC-U048: rejects min > max resources
 			DescribeTable("rejects min > max resources (TC-U048)",
 				func(mutate func(*v1alpha1.Container)) {
