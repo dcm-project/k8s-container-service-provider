@@ -29,12 +29,7 @@ func (h *Handler) mapCreateError(err error) oapigen.CreateContainerResponseObjec
 
 	var invalid *store.InvalidArgumentError
 	if errors.As(err, &invalid) {
-		detail := err.Error()
-		return oapigen.CreateContainer400ApplicationProblemPlusJSONResponse{
-			Type:   v1alpha1.INVALIDARGUMENT,
-			Title:  "Invalid argument",
-			Detail: &detail,
-		}
+		return newCreateError400(err.Error())
 	}
 
 	h.logger.Error("unexpected error in CreateContainer", "error", err)
