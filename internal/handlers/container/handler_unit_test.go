@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"strings"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
@@ -108,60 +107,6 @@ var _ = Describe("Container API Handlers", func() {
 				Expect(ok).To(BeTrue(), "expected CreateContainer201JSONResponse")
 				Expect(capturedID).To(Equal(clientID))
 			})
-		})
-
-		Context("ID validation", func() {
-
-			// TC-U012: rejects invalid client IDs
-			DescribeTable("rejects invalid client IDs (TC-U012)",
-				func(invalidID string) {
-					body := validCreateBody()
-					req := oapigen.CreateContainerRequestObject{
-						Params: v1alpha1.CreateContainerParams{Id: util.Ptr(invalidID)},
-						Body:   &body,
-					}
-
-					resp, err := h.CreateContainer(context.Background(), req)
-					Expect(err).NotTo(HaveOccurred())
-
-					errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
-					Expect(ok).To(BeTrue(), "expected 400 response for invalid ID %q", invalidID)
-					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
-				},
-				Entry("leading dash", "-leading-dash"),
-				Entry("trailing dash", "trailing-"),
-				Entry("has underscore", "has_underscore"),
-				Entry("UPPERCASE", "UPPERCASE"),
-				Entry("too long (64 chars)", strings.Repeat("a", 64)),
-			)
-
-			// TC-U047: accepts valid boundary IDs
-			DescribeTable("accepts valid boundary IDs (TC-U047)",
-				func(validID string) {
-					body := validCreateBody()
-					repo.CreateFunc = func(_ context.Context, c v1alpha1.Container, id string) (*v1alpha1.Container, error) {
-						return newContainerResult(c, id, testNamespace), nil
-					}
-
-					req := oapigen.CreateContainerRequestObject{
-						Params: v1alpha1.CreateContainerParams{Id: util.Ptr(validID)},
-						Body:   &body,
-					}
-
-					resp, err := h.CreateContainer(context.Background(), req)
-					Expect(err).NotTo(HaveOccurred())
-
-					_, ok := resp.(oapigen.CreateContainer201JSONResponse)
-					Expect(ok).To(BeTrue(), "expected 201 for valid ID %q", validID)
-				},
-				Entry("single char", "a"),
-				Entry("two chars", "ab"),
-				Entry("max length (63 chars)", strings.Repeat("a", 63)),
-				Entry("with hyphens", "a-b"),
-				Entry("letters and digits", "a0"),
-				Entry("starts with digit", "1abc"),
-				Entry("UUID format", "550e8400-e29b-41d4-a716-446655440000"),
-			)
 		})
 
 		Context("conflict handling", func() {
@@ -531,13 +476,14 @@ var _ = Describe("Container API Handlers", func() {
 				},
 			),
 
-			// 400 from CreateContainer (invalid ID)
+			// 400 from CreateContainer (cpu min > max)
 			Entry("CreateContainer 400 has Type and Title",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					body := validCreateBody()
+					body.Resources.Cpu.Min = 4
+					body.Resources.Cpu.Max = 2
 					return s.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
-						Params: v1alpha1.CreateContainerParams{Id: util.Ptr("INVALID")},
-						Body:   &body,
+						Body: &body,
 					})
 				},
 				func(resp interface{}) {

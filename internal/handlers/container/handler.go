@@ -28,9 +28,6 @@ func NewHandler(repo store.ContainerRepository, logger *slog.Logger) *Handler {
 func (h *Handler) CreateContainer(ctx context.Context, req oapigen.CreateContainerRequestObject) (oapigen.CreateContainerResponseObject, error) {
 	var id string
 	if req.Params.Id != nil {
-		if err := validateContainerID(*req.Params.Id); err != nil {
-			return newCreateError400(err.Error()), nil
-		}
 		id = *req.Params.Id
 	} else {
 		id = uuid.New().String()

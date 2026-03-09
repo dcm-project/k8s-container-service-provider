@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
 	"github.com/dcm-project/k8s-container-service-provider/internal/handlers"
-	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -175,6 +175,66 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 		Entry("network object without ports (TC-U059)",
 			`{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{}}`,
 			"network object without ports field"),
+	)
+
+	// TC-U012: rejects invalid client IDs via OpenAPI middleware
+	DescribeTable("rejects invalid client IDs (TC-U012)",
+		func(invalidID string, description string) {
+			baseURL := startValidationServer()
+
+			body := `{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`
+			resp, err := http.Post(
+				baseURL+"/api/v1alpha1/containers?id="+invalidID,
+				"application/json",
+				strings.NewReader(body),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
+				"expected 400 for: %s", description)
+			Expect(resp.Header.Get("Content-Type")).To(Equal("application/problem+json"),
+				"expected RFC 7807 content type for: %s", description)
+
+			respBody, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+
+			var problemJSON map[string]any
+			Expect(json.Unmarshal(respBody, &problemJSON)).To(Succeed())
+			Expect(problemJSON["type"]).To(Equal("INVALID_ARGUMENT"))
+		},
+		Entry("leading dash", "-leading-dash", "ID starting with dash"),
+		Entry("trailing dash", "trailing-", "ID ending with dash"),
+		Entry("has underscore", "has_underscore", "ID containing underscore"),
+		Entry("UPPERCASE", "UPPERCASE", "ID with uppercase letters"),
+		Entry("too long (64 chars)", strings.Repeat("a", 64), "ID exceeding 63 character limit"),
+	)
+
+	// TC-U047: accepts valid boundary IDs via OpenAPI middleware
+	DescribeTable("accepts valid boundary IDs (TC-U047)",
+		func(validID string, description string) {
+			baseURL := startValidationServer()
+
+			body := `{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`
+			resp, err := http.Post(
+				baseURL+"/api/v1alpha1/containers?id="+validID,
+				"application/json",
+				strings.NewReader(body),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+
+			// Valid ID should pass middleware validation and reach the Unimplemented handler (501)
+			Expect(resp.StatusCode).To(Equal(http.StatusNotImplemented),
+				"expected 501 (pass-through) for valid ID: %s", description)
+		},
+		Entry("single char", "a", "minimum length"),
+		Entry("two chars", "ab", "two characters"),
+		Entry("max length (63 chars)", strings.Repeat("a", 63), "maximum length"),
+		Entry("with hyphens", "a-b", "dash in middle"),
+		Entry("letters and digits", "a0", "letter followed by digit"),
+		Entry("starts with digit", "1abc", "starts with digit"),
+		Entry("UUID format", "550e8400-e29b-41d4-a716-446655440000", "UUID format"),
 	)
 
 	// TC-U067: valid request passes OpenAPI middleware and reaches handler.

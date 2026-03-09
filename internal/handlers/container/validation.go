@@ -2,24 +2,11 @@ package container
 
 import (
 	"fmt"
-	"regexp"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
 	"github.com/dcm-project/k8s-container-service-provider/internal/units"
 )
-
-// containerIDPattern enforces AEP-122 resource ID format:
-// must start with a lowercase letter or digit, contain only lowercase letters,
-// digits, and hyphens, and be 1–63 characters long.
-var containerIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
-
-func validateContainerID(id string) error {
-	if !containerIDPattern.MatchString(id) {
-		return fmt.Errorf("invalid container ID %q: must match %s", id, containerIDPattern.String())
-	}
-	return nil
-}
 
 func validateResources(res v1alpha1.ContainerResources) error {
 	if res.Cpu.Min > res.Cpu.Max {
