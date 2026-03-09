@@ -6,7 +6,7 @@
 - **Related Requirements:** REQ-HTTP-050, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–090, REQ-MON-110–120, REQ-MON-150, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–020, REQ-XC-CFG-010
 - **Framework:** Ginkgo v2 + Gomega
 - **Created:** 2026-02-17
-- **Last Updated:** 2026-03-09 (moved TC-U005/U006 to section 3; retired TC-U065/U066; updated TC-U007, coverage matrix)
+- **Last Updated:** 2026-03-09 (added TC-U069 positive label test; tightened TC-U067 assertion to 201 + body; updated coverage matrix)
 
 Unit tests verify individual components in isolation. All external dependencies
 (ContainerRepository, K8s client, NATS, HTTP server) are replaced with mocks,
@@ -764,8 +764,18 @@ dedicated test class or `Describe` block.
 - **Type:** Unit (validation sub-case)
 - **Given:** A valid container request body with all required fields
 - **When:** POST `/api/v1alpha1/containers` is sent through the OpenAPI validation middleware
-- **Then:** The request passes validation and reaches the handler (response is not 400)
+- **Then:** The response is 201 with a valid container body (service_type, metadata.name present)
 - **Referenced by:** TC-U014 (CreateContainer validates request body)
+
+#### TC-U069: CreateContainer accepts and propagates non-reserved user labels
+
+- **Requirement:** REQ-API-090 (extended — see SC-004)
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A valid request body with `metadata.labels: {"team": "platform", "env": "dev"}` (non-reserved keys)
+- **When:** `POST /api/v1alpha1/containers` is called (mock repository returns success)
+- **Then:** HTTP status is `201` AND the labels passed to the store match the input AND the response container's labels match the input
+- **Referenced by:** TC-U049 (positive complement to reserved-label rejection)
 
 #### TC-U068: containerIDPattern matches OpenAPI spec pattern
 
@@ -802,7 +812,7 @@ dedicated test class or `Describe` block.
 | REQ-API-060   | TC-U009                           | Covered |
 | REQ-API-070   | TC-U009                           | Covered |
 | REQ-API-080   | TC-U013, TC-U046                  | Covered |
-| REQ-API-090   | TC-U014, TC-U048, TC-U049, TC-U052–TC-U056, TC-U059, TC-U067 (via TC-U014) | Covered |
+| REQ-API-090   | TC-U014, TC-U048, TC-U049, TC-U052–TC-U056, TC-U059, TC-U067 (via TC-U014), TC-U069 | Covered |
 | REQ-API-100   | TC-U015, TC-U050                  | Covered |
 | REQ-API-110   | TC-U016                           | Covered |
 | REQ-API-120   | TC-U017                           | Covered |
@@ -834,7 +844,7 @@ dedicated test class or `Describe` block.
 | REQ-REG-070   | TC-U061                           | Covered |
 | REQ-XC-CFG-010| TC-U002, TC-U004, TC-U063         | Covered |
 
-**Total:** 63 test case IDs (2 retired: TC-U065, TC-U066) — 33 in behavioural
+**Total:** 64 test case IDs (2 retired: TC-U065, TC-U066) — 34 in behavioural
 test classes, 30 in the utility index (tested transitively through higher-level
 behavioural and integration tests).
 
