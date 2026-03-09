@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
@@ -19,6 +20,37 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+// stubContainerRepository is a minimal store.ContainerRepository for TC-U067.
+// Only Create is implemented; other methods panic if called unexpectedly.
+type stubContainerRepository struct{}
+
+func (s *stubContainerRepository) Create(_ context.Context, c v1alpha1.Container, id string) (*v1alpha1.Container, error) {
+	now := time.Now().UTC()
+	status := v1alpha1.PENDING
+	path := "containers/" + id
+	result := c
+	result.Id = &id
+	result.Path = &path
+	result.Status = &status
+	result.CreateTime = &now
+	result.UpdateTime = &now
+	ns := "default"
+	result.Metadata.Namespace = &ns
+	return &result, nil
+}
+
+func (s *stubContainerRepository) Get(_ context.Context, _ string) (*v1alpha1.Container, error) {
+	panic("unexpected call to Get")
+}
+
+func (s *stubContainerRepository) List(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
+	panic("unexpected call to List")
+}
+
+func (s *stubContainerRepository) Delete(_ context.Context, _ string) error {
+	panic("unexpected call to Delete")
+}
 
 var _ = Describe("Container API Handlers - Request Validation", func() {
 
@@ -239,20 +271,66 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 		Entry("UUID format", "550e8400-e29b-41d4-a716-446655440000", "UUID format"),
 	)
 
-	// TC-U067: valid request passes OpenAPI middleware and reaches handler.
+	// TC-U067: valid request passes OpenAPI middleware and reaches handler
+	// with a real 201 response (not a middleware rejection or panic recovery).
 	It("passes a valid request through OpenAPI middleware (TC-U067)", func() {
-		baseURL := startValidationServer()
+		// Inline server setup with a stub repo so the handler can complete
+		// the Create flow. Does NOT modify startValidationServer — TC-U014
+		// and TC-U047 deliberately use nil repo for middleware-only testing.
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				Address:         ":0",
+				ShutdownTimeout: 5 * time.Second,
+			},
+		}
+		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+		ch := container.NewHandler(&stubContainerRepository{}, logger, time.Now(), "0.0.1-test")
+		h := oapigen.NewStrictHandlerWithOptions(ch, nil, oapigen.StrictHTTPServerOptions{})
+		srv := apiserver.New(cfg, logger, h)
 
-		body := `{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`
+		ln, err := net.Listen("tcp", ":0")
+		Expect(err).NotTo(HaveOccurred())
+		addr := ln.Addr().String()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+
+		go func() {
+			_ = srv.Run(ctx, ln)
+		}()
+
+		Eventually(func() error {
+			resp, reqErr := http.Get(fmt.Sprintf("http://%s/health", addr))
+			if reqErr != nil {
+				return reqErr
+			}
+			resp.Body.Close()
+			return nil
+		}).WithTimeout(5 * time.Second).WithPolling(50 * time.Millisecond).Should(Succeed())
+
+		baseURL := fmt.Sprintf("http://%s", addr)
+
+		reqBody := `{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`
 		resp, err := http.Post(
 			baseURL+"/api/v1alpha1/containers",
 			"application/json",
-			strings.NewReader(body),
+			strings.NewReader(reqBody),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		defer resp.Body.Close()
 
-		Expect(resp.StatusCode).NotTo(Equal(http.StatusBadRequest),
-			"valid request should pass OpenAPI validation and reach the handler")
+		Expect(resp.StatusCode).To(Equal(http.StatusCreated))
+		Expect(resp.Header.Get("Content-Type")).NotTo(ContainSubstring("application/problem+json"))
+
+		respBody, err := io.ReadAll(resp.Body)
+		Expect(err).NotTo(HaveOccurred())
+
+		var result map[string]any
+		Expect(json.Unmarshal(respBody, &result)).To(Succeed())
+		Expect(result["service_type"]).To(Equal("container"))
+		Expect(result).To(HaveKey("metadata"))
+		meta, ok := result["metadata"].(map[string]any)
+		Expect(ok).To(BeTrue(), "metadata should be an object")
+		Expect(meta["name"]).To(Equal("test"))
 	})
 })
