@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
@@ -10,18 +11,22 @@ import (
 )
 
 // Handler implements oapigen.StrictServerInterface for container CRUD
-// operations. It delegates persistence to a store.ContainerRepository and maps
-// store errors to typed OpenAPI responses.
+// operations and the health endpoint. It delegates persistence to a
+// store.ContainerRepository and maps store errors to typed OpenAPI responses.
 type Handler struct {
-	store  store.ContainerRepository
-	logger *slog.Logger
+	store     store.ContainerRepository
+	logger    *slog.Logger
+	startTime time.Time
+	version   string
 }
 
 // NewHandler creates a Handler backed by the given repository.
-func NewHandler(repo store.ContainerRepository, logger *slog.Logger) *Handler {
+func NewHandler(repo store.ContainerRepository, logger *slog.Logger, startTime time.Time, version string) *Handler {
 	return &Handler{
-		store:  repo,
-		logger: logger,
+		store:     repo,
+		logger:    logger,
+		startTime: startTime,
+		version:   version,
 	}
 }
 

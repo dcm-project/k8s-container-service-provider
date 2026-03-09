@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
@@ -26,7 +27,53 @@ var _ = Describe("Container API Handlers", func() {
 
 	BeforeEach(func() {
 		repo = &mockContainerRepository{}
-		h = container.NewHandler(repo, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+		h = container.NewHandler(repo, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Now(), "1.0.0")
+	})
+
+	// -----------------------------------------------------------------------
+	// GetHealth
+	// -----------------------------------------------------------------------
+	Describe("GetHealth", func() {
+
+		// TC-U005: Returns 200 OK with correct body
+		// Validates: REQ-HLT-010, REQ-HLT-020
+		// Transitively covers: TC-U007 (REQ-HLT-040 — GetHealth uses only
+		// startTime and version, never touches the store or K8s API)
+		It("returns 200 with correct response fields (TC-U005)", func() {
+			h := container.NewHandler(nil, slog.New(slog.NewJSONHandler(io.Discard, nil)), time.Now(), "2.3.4")
+
+			resp, err := h.GetHealth(context.Background(), oapigen.GetHealthRequestObject{})
+			Expect(err).NotTo(HaveOccurred())
+
+			okResp, ok := resp.(oapigen.GetHealth200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected GetHealth200JSONResponse")
+
+			Expect(okResp.Status).To(Equal("healthy"))
+			Expect(okResp.Type).NotTo(BeNil())
+			Expect(*okResp.Type).To(Equal("k8s-container-service-provider.dcm.io/health"))
+			Expect(okResp.Path).NotTo(BeNil())
+			Expect(*okResp.Path).To(Equal("health"))
+			Expect(okResp.Version).NotTo(BeNil())
+			Expect(*okResp.Version).To(Equal("2.3.4"))
+			Expect(okResp.Uptime).NotTo(BeNil())
+			Expect(*okResp.Uptime).To(BeNumerically(">=", 0))
+		})
+
+		// TC-U006: Uptime increases over time
+		// Validates: REQ-HLT-020
+		It("reports uptime increasing over time (TC-U006)", func() {
+			startTime := time.Now().Add(-60 * time.Second)
+			h := container.NewHandler(nil, slog.New(slog.NewJSONHandler(io.Discard, nil)), startTime, "1.0.0")
+
+			resp, err := h.GetHealth(context.Background(), oapigen.GetHealthRequestObject{})
+			Expect(err).NotTo(HaveOccurred())
+
+			okResp, ok := resp.(oapigen.GetHealth200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected GetHealth200JSONResponse")
+
+			Expect(okResp.Uptime).NotTo(BeNil())
+			Expect(*okResp.Uptime).To(BeNumerically(">=", 60))
+		})
 	})
 
 	// -----------------------------------------------------------------------

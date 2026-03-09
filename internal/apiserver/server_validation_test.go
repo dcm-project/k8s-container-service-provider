@@ -14,7 +14,7 @@ import (
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
-	"github.com/dcm-project/k8s-container-service-provider/internal/handlers"
+	"github.com/dcm-project/k8s-container-service-provider/internal/handlers/container"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +32,8 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			},
 		}
 		logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-		h := handlers.New(logger, time.Now(), "0.0.1-test", &oapigen.Unimplemented{})
+		ch := container.NewHandler(nil, logger, time.Now(), "0.0.1-test")
+		h := oapigen.NewStrictHandlerWithOptions(ch, nil, oapigen.StrictHTTPServerOptions{})
 		srv := apiserver.New(cfg, logger, h)
 
 		ln, err := net.Listen("tcp", ":0")
@@ -224,9 +225,10 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 
-			// Valid ID should pass middleware validation and reach the Unimplemented handler (501)
-			Expect(resp.StatusCode).To(Equal(http.StatusNotImplemented),
-				"expected 501 (pass-through) for valid ID: %s", description)
+			// Valid ID should pass middleware validation and reach the handler
+			// (not be rejected with 400 by OpenAPI middleware).
+			Expect(resp.StatusCode).NotTo(Equal(http.StatusBadRequest),
+				"valid ID should pass OpenAPI validation: %s", description)
 		},
 		Entry("single char", "a", "minimum length"),
 		Entry("two chars", "ab", "two characters"),
@@ -250,7 +252,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 		Expect(err).NotTo(HaveOccurred())
 		defer resp.Body.Close()
 
-		Expect(resp.StatusCode).To(Equal(http.StatusNotImplemented),
-			"valid request should pass middleware and reach the Unimplemented handler (501)")
+		Expect(resp.StatusCode).NotTo(Equal(http.StatusBadRequest),
+			"valid request should pass OpenAPI validation and reach the handler")
 	})
 })

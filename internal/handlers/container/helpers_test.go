@@ -14,7 +14,7 @@ import (
 // Compile-time assertions
 // ---------------------------------------------------------------------------
 
-// TC-U008: Handler implements StrictServerInterface.
+// TC-U009 (via TC-U008): Handler implements StrictServerInterface.
 var _ oapigen.StrictServerInterface = (*container.Handler)(nil)
 
 // mockContainerRepository implements store.ContainerRepository.

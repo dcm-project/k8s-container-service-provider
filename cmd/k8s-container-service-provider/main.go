@@ -13,7 +13,6 @@ import (
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
-	"github.com/dcm-project/k8s-container-service-provider/internal/handlers"
 	containerhandler "github.com/dcm-project/k8s-container-service-provider/internal/handlers/container"
 	k8s "github.com/dcm-project/k8s-container-service-provider/internal/kubernetes"
 	"github.com/dcm-project/k8s-container-service-provider/internal/registration"
@@ -61,11 +60,10 @@ func run(logger *slog.Logger) error {
 	}
 	store := k8s.NewK8sContainerStore(k8sClient, k8sCfg, logger)
 
-	containerHandler := containerhandler.NewHandler(store, logger)
-	containerAdapter := oapigen.NewStrictHandlerWithOptions(containerHandler, nil, oapigen.StrictHTTPServerOptions{})
+	containerHandler := containerhandler.NewHandler(store, logger, time.Now(), version)
+	strictAdapter := oapigen.NewStrictHandlerWithOptions(containerHandler, nil, oapigen.StrictHTTPServerOptions{})
 
-	h := handlers.New(logger, time.Now(), version, containerAdapter)
-	srv := apiserver.New(cfg, logger, h).WithOnReady(registrar.Start)
+	srv := apiserver.New(cfg, logger, strictAdapter).WithOnReady(registrar.Start)
 
 	return srv.Run(ctx, ln)
 }
