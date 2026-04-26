@@ -82,6 +82,26 @@ func (h *Handler) DeleteContainer(ctx context.Context, req oapigen.DeleteContain
 	return oapigen.DeleteContainer204Response{}, nil
 }
 
+func (h *Handler) UpdateContainer(ctx context.Context, req oapigen.UpdateContainerRequestObject) (oapigen.UpdateContainerResponseObject, error) {
+	requestPath := containersBasePath + "/" + req.ContainerId
+
+	spec := req.Body.Spec
+
+	if err := validateResources(spec.Resources); err != nil {
+		return newUpdateError400(err.Error(), requestPath), nil
+	}
+
+	if err := validateUserLabels(spec.Metadata.Labels); err != nil {
+		return newUpdateError400(err.Error(), requestPath), nil
+	}
+
+	result, err := h.store.Update(ctx, req.ContainerId, spec)
+	if err != nil {
+		return h.mapUpdateError(err, requestPath), nil
+	}
+	return oapigen.UpdateContainer200JSONResponse(*result), nil
+}
+
 func (h *Handler) ListContainers(ctx context.Context, req oapigen.ListContainersRequestObject) (oapigen.ListContainersResponseObject, error) {
 	// maxPageSize validation chain:
 	//   - OpenAPI middleware enforces max_page_size ∈ [1,1000] (invalid → 400).

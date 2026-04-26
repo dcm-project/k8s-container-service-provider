@@ -36,7 +36,7 @@ func mustPostPath() string {
 	return p
 }
 
-var ops = []string{"CREATE", "DELETE", "READ"}
+var ops = []string{"CREATE", "DELETE", "READ", "UPDATE"}
 
 // Option configures a Registrar.
 type Option func(*Registrar)

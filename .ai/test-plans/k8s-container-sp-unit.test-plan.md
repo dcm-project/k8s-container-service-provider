@@ -3,10 +3,10 @@
 ## Overview
 
 - **Related Spec:** .ai/specs/k8s-container-sp.spec.md
-- **Related Requirements:** REQ-HTTP-050, REQ-HTTP-091, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–095, REQ-MON-110–120, REQ-MON-150, REQ-MON-170, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–040, REQ-XC-CFG-010–030
+- **Related Requirements:** REQ-HTTP-050, REQ-HTTP-091, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-API-300–430, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–095, REQ-MON-110–120, REQ-MON-150, REQ-MON-170, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–040, REQ-XC-CFG-010–030
 - **Framework:** Ginkgo v2 + Gomega
 - **Created:** 2026-02-17
-- **Last Updated:** 2026-04-07 (added TC-U082–U085 for REQ-XC-CFG-030 ExternalServiceType validation)
+- **Last Updated:** 2026-04-24 (added TC-U092–U095 for REQ-API-400–430 SHOULD-level AEP improvements)
 
 Unit tests verify individual components in isolation. All external dependencies
 (ContainerRepository, K8s client, NATS, HTTP server) are replaced with mocks,
@@ -398,6 +398,95 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Given:** SP_K8S_EXTERNAL_SVC_TYPE is set to "" (empty string)
 - **When:** Config is loaded
 - **Then:** An error is returned stating the value must be LoadBalancer or NodePort
+
+### TC-U087: UpdateContainer returns 200 with updated container
+
+- **Requirement:** REQ-API-300
+- **AC:** AC-API-300
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A container with id "abc-123" exists, mock repository's `GetFunc` returns it and `UpdateFunc` returns the updated container
+- **When:** `PATCH /api/v1alpha1/containers/abc-123` is called with a valid merge-patch body changing `image.reference` to `"nginx:2.0"`
+- **Then:** HTTP status is `200` AND response body is the updated Container with `image.reference="nginx:2.0"` and all read-only fields populated
+
+### TC-U088: UpdateContainer returns 404 for non-existent container
+
+- **Requirement:** REQ-API-320
+- **AC:** AC-API-320
+- **Priority:** High
+- **Type:** Unit
+- **Given:** Mock repository's `UpdateFunc` returns a not-found error for id "xyz-999"
+- **When:** `PATCH /api/v1alpha1/containers/xyz-999` is called
+- **Then:** HTTP status is `404` AND body is RFC 7807 error with type `NOT_FOUND`
+
+### TC-U089: UpdateContainer returns 400 for invalid patch content
+
+- **Requirement:** REQ-API-330
+- **AC:** AC-API-330
+- **Priority:** High
+- **Type:** Unit
+- **Given:** Mock repository's `UpdateFunc` returns an invalid-argument error (e.g., `resources.cpu.min > resources.cpu.max` after merge)
+- **When:** `PATCH /api/v1alpha1/containers/abc-123` is called with a patch that causes validation failure
+- **Then:** HTTP status is `400` AND body is RFC 7807 error with type `INVALID_ARGUMENT`
+
+### TC-U090: UpdateContainer ignores readOnly fields in patch body
+
+- **Requirement:** REQ-API-310
+- **AC:** AC-API-310
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A PATCH body includes readOnly fields like `"status": "RUNNING"` and `"id": "different-id"`
+- **When:** `PATCH /api/v1alpha1/containers/abc-123` is called (mock repository returns success)
+- **Then:** HTTP status is `200` AND the readOnly fields in the response reflect server-managed values, not the patch input
+
+### TC-U091: UpdateContainer returns 500 for unexpected store errors
+
+- **Requirement:** REQ-API-180
+- **Priority:** High
+- **Type:** Unit
+- **Given:** Mock repository's `UpdateFunc` returns a generic (non-typed) error
+- **When:** `PATCH /api/v1alpha1/containers/abc-123` is called
+- **Then:** HTTP status is `500` AND body is RFC 7807 error with type `INTERNAL`
+
+### TC-U092: ListContainers accepts filter parameter without error
+
+- **Requirement:** REQ-API-400
+- **AC:** AC-API-400
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Mock repository's `ListFunc` returns a valid container list
+- **When:** `GET /api/v1alpha1/containers?filter=metadata.name%3D%22test%22` is called
+- **Then:** HTTP status is `200` AND the response contains the container list (filter is accepted but not applied)
+
+### TC-U093: ListContainers accepts order_by parameter without error
+
+- **Requirement:** REQ-API-410
+- **AC:** AC-API-410
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Mock repository's `ListFunc` returns a valid container list
+- **When:** `GET /api/v1alpha1/containers?order_by=create_time+desc` is called
+- **Then:** HTTP status is `200` AND the response contains the container list (order_by is accepted but not applied)
+
+### TC-U094: Container response includes etag field
+
+- **Requirement:** REQ-API-420
+- **AC:** AC-API-420
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Mock repository's `CreateFunc` returns a container with `Etag` populated
+- **When:** `POST /api/v1alpha1/containers` is called with a valid body
+- **Then:** HTTP status is `201` AND the response container has a non-nil `etag` field
+
+### TC-U095: Container response includes uid field
+
+- **Requirement:** REQ-API-430
+- **AC:** AC-API-430
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Mock repository's `CreateFunc` returns a container with `Uid` populated
+- **When:** `POST /api/v1alpha1/containers` is called with a valid body
+- **Then:** HTTP status is `201` AND the response container has a non-nil `uid` field
 
 ### TC-U050: ListContainers rejects invalid page_token
 
@@ -897,7 +986,7 @@ dedicated test class or `Describe` block.
   - `schema_version` is `"v1alpha1"`
   - `display_name` is `"K8s Container SP"`
   - `endpoint` is `"https://sp.example.com/api/v1alpha1/containers"`
-  - `operations` contains `["CREATE", "DELETE", "READ"]`
+  - `operations` contains `["CREATE", "DELETE", "READ", "UPDATE"]`
 - **Referenced by:** TC-I054 (registration payload integration test)
 
 #### TC-U044: Payload includes region and zone metadata when configured
@@ -1004,6 +1093,15 @@ dedicated test class or `Describe` block.
 | REQ-API-180   | TC-U023, TC-U051                  | Covered |
 | REQ-API-200   | TC-U079, TC-U080                  | Covered |
 | REQ-API-210   | TC-U081                           | Covered |
+| REQ-API-300   | TC-U087                           | Covered |
+| REQ-API-310   | TC-U090                           | Covered |
+| REQ-API-320   | TC-U088                           | Covered |
+| REQ-API-330   | TC-U089                           | Covered |
+| REQ-API-340   | TC-U087 (transitively)            | Covered |
+| REQ-API-400   | TC-U092                           | Covered |
+| REQ-API-410   | TC-U093                           | Covered |
+| REQ-API-420   | TC-U094                           | Covered |
+| REQ-API-430   | TC-U095                           | Covered |
 | REQ-STR-010   | TC-U024 (via TC-I009)             | Covered |
 | REQ-STR-080   | TC-U025 (via TC-U019/U021), TC-U026 (via TC-U013) | Covered |
 | REQ-K8S-040   | TC-U027 (via TC-I012)             | Covered |
@@ -1034,7 +1132,7 @@ dedicated test class or `Describe` block.
 | REQ-MON-131   | TC-U079                           | Covered |
 | REQ-MON-170   | TC-U072, TC-U079                  | Covered |
 
-**Total:** 73 test case IDs (2 retired: TC-U065, TC-U066) — 42 in behavioural
+**Total:** 78 test case IDs (2 retired: TC-U065, TC-U066) — 47 in behavioural
 test classes, 31 in the utility index (tested transitively through higher-level
 behavioural and integration tests).
 

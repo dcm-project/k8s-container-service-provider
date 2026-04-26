@@ -24,7 +24,7 @@ test-cover:
 lint:
 	golangci-lint run ./...
 
-check: fmt vet lint test
+check: fmt vet lint test check-aep
 
 tidy:
 	go mod tidy
@@ -61,6 +61,8 @@ check-generate-api: generate-api
 
 # Check AEP compliance
 check-aep:
+	@command -v spectral >/dev/null 2>&1 || npx @stoplight/spectral-cli --version >/dev/null 2>&1 || \
+		(echo "Error: spectral CLI not found. Install via: npm install -g @stoplight/spectral-cli" && exit 1)
 	spectral lint --fail-severity=warn ./api/v1alpha1/openapi.yaml
 
 .PHONY: build run clean fmt vet test test-cover lint check tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep

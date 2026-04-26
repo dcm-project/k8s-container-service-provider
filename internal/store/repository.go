@@ -12,5 +12,6 @@ type ContainerRepository interface {
 	Create(ctx context.Context, spec v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error)
 	Get(ctx context.Context, containerID string) (*v1alpha1.Container, error)
 	List(ctx context.Context, maxPageSize int32, pageToken string) (*v1alpha1.ContainerList, error)
+	Update(ctx context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error)
 	Delete(ctx context.Context, containerID string) error
 }

@@ -4,13 +4,13 @@
 
 The Kubernetes Container Service Provider (K8s Container SP) is a REST API that
 manages containerized workloads on Kubernetes clusters using Deployments. It
-exposes endpoints for creating, reading, and deleting containers, integrates
+exposes endpoints for creating, reading, updating, and deleting containers, integrates
 with the DCM Service Provider Registry, reports resource status via CloudEvents
 over NATS, and exposes a health endpoint for DCM control plane polling.
 
 **Version scope (v1):**
 
-- Create and delete container instances only (no update/day-2 operations)
+- Create, update, and delete container instances
 - Single-container Deployments with replicas=1
 - Kubernetes Deployments only (no Jobs, DaemonSets, StatefulSets, bare Pods)
 - Ephemeral storage only (no persistent volumes)
@@ -332,6 +332,15 @@ size limits.
 | REQ-API-180 | Error types MUST map to appropriate HTTP status codes per the error mapping table | MUST | |
 | REQ-API-200 | The POST `/api/v1alpha1/containers` request body MUST be a JSON object with a required `spec` property containing the Container input fields (CreateContainerRequest wrapper). The response remains a bare Container | MUST | D1 |
 | REQ-API-210 | The Container schema MUST include an optional `provider_hints` field (type: object, additionalProperties: true). The SP MUST accept it on input but MUST NOT act on hint content | MUST | D3, DD-080 |
+| REQ-API-300 | PATCH `/api/v1alpha1/containers/{container_id}` MUST accept an `application/merge-patch+json` request body and return 200 OK with the updated container (AEP-134) | MUST | |
+| REQ-API-310 | Fields marked `readOnly` in the schema (`id`, `path`, `status`, `create_time`, `update_time`, `service`, `metadata.namespace`) MUST be ignored in the patch body | MUST | |
+| REQ-API-320 | Update MUST return 404 Not Found with RFC 7807 error body when the container does not exist | MUST | |
+| REQ-API-330 | Update MUST return 400 Bad Request for invalid patch content (e.g., `resources.cpu.min > resources.cpu.max` after merge) | MUST | SC-002 |
+| REQ-API-340 | Update MUST set `update_time` to the current timestamp on the returned container | MUST | |
+| REQ-API-400 | List SHOULD accept an optional `filter` query parameter (AEP-132). Accepted but not implemented in v1 | SHOULD | |
+| REQ-API-410 | List SHOULD accept an optional `order_by` query parameter (AEP-132). Accepted but not implemented in v1 | SHOULD | |
+| REQ-API-420 | Container responses SHOULD include a read-only `etag` field for optimistic concurrency (AEP-154). Populated from the underlying Kubernetes Deployment resourceVersion | SHOULD | |
+| REQ-API-430 | Container responses SHOULD include a read-only `uid` field as a system-assigned immutable identifier (AEP-148). Populated from the underlying Kubernetes Deployment UID | SHOULD | |
 
 **Error type mapping (REQ-API-180):**
 
@@ -340,6 +349,7 @@ size limits.
 | Invalid request body | 400 | INVALID_ARGUMENT |
 | Container not found | 404 | NOT_FOUND |
 | Name already exists | 409 | ALREADY_EXISTS |
+| Invalid update body | 400 | INVALID_ARGUMENT |
 | Unexpected error | 500 | INTERNAL |
 
 > **Note:** 401 and 403 responses are defined in the OpenAPI spec for forward
@@ -493,6 +503,71 @@ size limits.
 - **When** Container is created
 - **Then** 201, hints do not affect K8s resource creation
 
+##### AC-API-300: Update container - success
+
+- **Validates:** REQ-API-300
+- **Given** a container with id "abc-123" exists
+- **When** PATCH `/api/v1alpha1/containers/abc-123` is called with a valid merge-patch body
+- **Then** the response MUST be 200 OK
+- **And** the response body MUST be the updated Container with all fields populated
+
+##### AC-API-310: Update container - readOnly fields ignored
+
+- **Validates:** REQ-API-310
+- **Given** a PATCH body contains readOnly fields (e.g., `"status": "RUNNING"`)
+- **When** the update is processed
+- **Then** readOnly fields in the patch MUST be ignored
+- **And** the response MUST reflect the server-managed values
+
+##### AC-API-320: Update container - not found
+
+- **Validates:** REQ-API-320
+- **Given** no container with id "xyz-999" exists
+- **When** PATCH `/api/v1alpha1/containers/xyz-999` is called
+- **Then** the response MUST be 404 Not Found with an RFC 7807 error body
+
+##### AC-API-330: Update container - validation failure
+
+- **Validates:** REQ-API-330
+- **Given** a PATCH body that results in `resources.cpu.min > resources.cpu.max` after merge
+- **When** the update is processed
+- **Then** the response MUST be 400 Bad Request with an RFC 7807 error body
+
+##### AC-API-340: Update container - update_time set
+
+- **Validates:** REQ-API-340
+- **Given** a container is updated successfully
+- **When** the response is returned
+- **Then** `update_time` MUST reflect the time of the update
+
+##### AC-API-400: List accepts filter parameter
+
+- **Validates:** REQ-API-400
+- **Given** a `filter` query parameter is provided in a List request
+- **When** the request is processed
+- **Then** the response SHOULD be 200 OK (filter is accepted but not applied in v1)
+
+##### AC-API-410: List accepts order_by parameter
+
+- **Validates:** REQ-API-410
+- **Given** an `order_by` query parameter is provided in a List request
+- **When** the request is processed
+- **Then** the response SHOULD be 200 OK (order_by is accepted but not applied in v1)
+
+##### AC-API-420: Container includes etag
+
+- **Validates:** REQ-API-420
+- **Given** a container is retrieved via Get or Create
+- **When** the response is returned
+- **Then** the `etag` field SHOULD be present and non-empty
+
+##### AC-API-430: Container includes uid
+
+- **Validates:** REQ-API-430
+- **Given** a container is retrieved via Get or Create
+- **When** the response is returned
+- **Then** the `uid` field SHOULD be present and non-empty
+
 #### Dependencies
 
 Depends on Topic 1 (HTTP Server) and Topic 4 (Kubernetes Integration & Store).
@@ -518,7 +593,7 @@ topic 5).
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| REQ-STR-010 | The SP MUST define a container storage interface with Create, Get, List, and Delete operations | MUST | DD-040 |
+| REQ-STR-010 | The SP MUST define a container storage interface with Create, Get, List, Update, and Delete operations | MUST | DD-040 |
 | REQ-STR-020 | The Create operation MUST return the created Container with all server-generated read-only fields populated | MUST | |
 | REQ-STR-030 | The Create operation MUST return a conflict error if a container with the same `metadata.name` already exists | MUST | |
 | REQ-STR-040 | The Get operation MUST return the matching Container for a valid containerId, or a not-found error if no match exists | MUST | |
@@ -526,6 +601,8 @@ topic 5).
 | REQ-STR-060 | The List operation MUST default to max_page_size=50 when not specified | MUST | |
 | REQ-STR-070 | The Delete operation MUST delete the container matching the containerId, or return a not-found error if no match exists | MUST | |
 | REQ-STR-080 | The store MUST define typed errors for not-found and conflict conditions to enable API handlers to map them to appropriate HTTP status codes | MUST | |
+| REQ-STR-090 | The Update operation MUST accept a container ID and updated ContainerSpec, update the existing resource, and return the updated Container with all read-only fields populated | MUST | |
+| REQ-STR-100 | The Update operation MUST return a not-found error if no container with the given ID exists | MUST | |
 
 #### Requirements - Kubernetes Integration
 
@@ -560,6 +637,9 @@ topic 5).
 | REQ-K8S-280 | During a rolling update (UpdatedReplicas < Replicas), the store MUST select the Running Pod for status; if none Running, the newest Pod MUST be selected | MUST | |
 | REQ-K8S-290 | If 2 Pods exist without a rolling update in progress, or 3+ Pods exist regardless, the store MUST return a ConflictError | MUST | |
 | REQ-K8S-300 | Get and Delete MUST return a ConflictError when multiple Deployments match the same instance ID label | MUST | |
+| REQ-K8S-310 | Update MUST modify the existing Deployment in place with the updated container spec fields | MUST | |
+| REQ-K8S-320 | Update MUST handle Service lifecycle transitions: create a Service if ports gain non-none visibility, update an existing Service if port configuration changes, and delete the Service if all ports become none | MUST | |
+| REQ-K8S-330 | Update MUST return a not-found error if no Deployment exists for the given container ID | MUST | |
 
 **Status mapping (REQ-K8S-230):**
 
@@ -659,6 +739,20 @@ topic 5).
 - **Given** a not-found condition occurs
 - **When** the error is returned
 - **Then** the error MUST be distinguishable as a not-found error
+
+##### AC-STR-090: Update operation - success
+
+- **Validates:** REQ-STR-090
+- **Given** a container with id "abc-123" exists
+- **When** Update is called with an updated ContainerSpec
+- **Then** the returned Container MUST reflect the updated fields with all read-only fields populated
+
+##### AC-STR-095: Update operation - not found
+
+- **Validates:** REQ-STR-100
+- **Given** no container with id "xyz-999" exists
+- **When** Update is called with containerId "xyz-999"
+- **Then** a not-found error MUST be returned
 
 ##### AC-STR-100: Error type - conflict
 
@@ -914,6 +1008,34 @@ topic 5).
 - **Given** two Deployments share the same `dcm.project/dcm-instance-id` label
 - **When** `Get` is called with that instance ID
 - **Then** a ConflictError MUST be returned
+
+##### AC-K8S-310: Deployment update
+
+- **Validates:** REQ-K8S-310
+- **Given** a container with id "abc-123" exists with image "nginx:1.0"
+- **When** Update is called with image "nginx:2.0"
+- **Then** the existing Deployment MUST be updated in place with the new image
+
+##### AC-K8S-320: Service lifecycle on update - create
+
+- **Validates:** REQ-K8S-320
+- **Given** a container exists with no Service (all ports none)
+- **When** Update adds a port with `visibility=internal`
+- **Then** a new Service MUST be created
+
+##### AC-K8S-321: Service lifecycle on update - delete
+
+- **Validates:** REQ-K8S-320
+- **Given** a container exists with a Service (ports with non-none visibility)
+- **When** Update changes all ports to `visibility=none`
+- **Then** the existing Service MUST be deleted
+
+##### AC-K8S-330: Update not found
+
+- **Validates:** REQ-K8S-330
+- **Given** no Deployment exists for container "xyz-999"
+- **When** Update is called with containerId "xyz-999"
+- **Then** a not-found error MUST be returned
 
 ##### AC-K8S-300b: Delete conflict for multiple Deployments
 
@@ -1242,7 +1364,7 @@ integration, provider capability updates post-registration.
   - `schema_version`: `"v1alpha1"`
   - `display_name`: configured display name (if set)
   - `endpoint`: `{provider.endpoint}/api/v1alpha1/containers`
-  - `operations`: `["CREATE", "DELETE", "READ"]`
+  - `operations`: `["CREATE", "DELETE", "READ", "UPDATE"]`
   - `metadata.region_code`: configured region (if set)
   - `metadata.zone`: configured zone (if set)
 
@@ -1728,9 +1850,9 @@ conditions (unless ReplicaFailure=True or Replicas=0, which map to FAILED).
 |--------|-------|-------|
 | REQ-HTTP-NNN | 4.1: HTTP Server | 11 |
 | REQ-HLT-NNN | 4.2: Health Service | 4 |
-| REQ-API-NNN | 4.3: Container API Handlers | 21 |
-| REQ-STR-NNN | 4.4: Store Interface | 8 |
-| REQ-K8S-NNN | 4.4: Kubernetes Integration | 29 |
+| REQ-API-NNN | 4.3: Container API Handlers | 26 |
+| REQ-STR-NNN | 4.4: Store Interface | 10 |
+| REQ-K8S-NNN | 4.4: Kubernetes Integration | 32 |
 | REQ-MON-NNN | 4.5: Status Monitoring | 22 |
 | REQ-REG-NNN | 4.6: DCM Registration | 9 |
 | REQ-XC-ID-NNN | 5.1: Resource Identity | 2 |
@@ -1738,4 +1860,4 @@ conditions (unless ReplicaFailure=True or Replicas=0, which map to FAILED).
 | REQ-XC-ERR-NNN | 5.3: Error Handling | 4 |
 | REQ-XC-LOG-NNN | 5.4: Logging | 2 |
 | REQ-XC-CFG-NNN | 5.5: Configuration Management | 2 |
-| **Total** | | **114** |
+| **Total** | | **124** |

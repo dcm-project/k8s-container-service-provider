@@ -12,3 +12,70 @@ rules:
       functionOptions:
         schema:
           type: object
+
+  x-aep-resource-requires-update:
+    description: >-
+      AEP-134: resource paths (those with both GET and DELETE) should also
+      expose PATCH (update).
+    message: "{{path}} has GET and DELETE but no PATCH — AEP-134 requires an Update method"
+    severity: warn
+    given: "$.paths.*"
+    then:
+      function: schema
+      functionOptions:
+        dialect: draft7
+        schema:
+          if:
+            required: [get, delete]
+          then:
+            required: [patch]
+
+  x-aep-resource-create-time:
+    description: "AEP-148: resources with x-aep-resource should have a create_time field"
+    message: "{{property}} has x-aep-resource but no create_time property (AEP-148)"
+    severity: warn
+    given: $.components.schemas[*]
+    then:
+      function: schema
+      functionOptions:
+        dialect: draft7
+        schema:
+          if:
+            required: [x-aep-resource]
+            properties:
+              x-aep-resource:
+                type: object
+                properties:
+                  singleton:
+                    not:
+                      const: true
+          then:
+            required: [properties]
+            properties:
+              properties:
+                required: [create_time]
+
+  x-aep-resource-update-time:
+    description: "AEP-148: resources with x-aep-resource should have an update_time field"
+    message: "{{property}} has x-aep-resource but no update_time property (AEP-148)"
+    severity: warn
+    given: $.components.schemas[*]
+    then:
+      function: schema
+      functionOptions:
+        dialect: draft7
+        schema:
+          if:
+            required: [x-aep-resource]
+            properties:
+              x-aep-resource:
+                type: object
+                properties:
+                  singleton:
+                    not:
+                      const: true
+          then:
+            required: [properties]
+            properties:
+              properties:
+                required: [update_time]

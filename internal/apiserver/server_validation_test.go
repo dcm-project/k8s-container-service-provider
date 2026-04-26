@@ -30,6 +30,8 @@ func (s *stubContainerRepository) Create(_ context.Context, spec v1alpha1.Contai
 	status := v1alpha1.PENDING
 	path := "containers/" + id
 	ns := "default"
+	etag := "rv-1"
+	uid := "uid-" + id
 	spec.Metadata.Namespace = &ns
 	return &v1alpha1.Container{
 		Id:         &id,
@@ -37,6 +39,8 @@ func (s *stubContainerRepository) Create(_ context.Context, spec v1alpha1.Contai
 		Status:     &status,
 		CreateTime: &now,
 		UpdateTime: &now,
+		Etag:       &etag,
+		Uid:        &uid,
 		Spec:       spec,
 	}, nil
 }
@@ -47,6 +51,10 @@ func (s *stubContainerRepository) Get(_ context.Context, _ string) (*v1alpha1.Co
 
 func (s *stubContainerRepository) List(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
 	panic("unexpected call to List")
+}
+
+func (s *stubContainerRepository) Update(_ context.Context, _ string, _ v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+	panic("unexpected call to Update")
 }
 
 func (s *stubContainerRepository) Delete(_ context.Context, _ string) error {

@@ -143,7 +143,7 @@ var _ = Describe("Registration Integration", func() {
 		Expect(receivedPayload.ServiceType).To(Equal("container"))
 		Expect(receivedPayload.DisplayName).To(HaveValue(Equal("K8s SP")))
 		Expect(receivedPayload.Endpoint).To(Equal("https://sp.example.com/api/v1alpha1/containers"))
-		Expect(receivedPayload.Operations).To(HaveValue(ConsistOf("CREATE", "DELETE", "READ")))
+		Expect(receivedPayload.Operations).To(HaveValue(ConsistOf("CREATE", "DELETE", "READ", "UPDATE")))
 		Expect(receivedPayload.SchemaVersion).To(Equal("v1alpha1"))
 		Expect(receivedPayload.Metadata).NotTo(BeNil())
 		Expect(receivedPayload.Metadata.RegionCode).To(HaveValue(Equal("us-east-1")))

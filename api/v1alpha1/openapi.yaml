@@ -62,6 +62,18 @@ paths:
           required: false
           schema:
             type: string
+        - name: filter
+          in: query
+          description: AEP-132 filter expression (accepted but not yet implemented)
+          required: false
+          schema:
+            type: string
+        - name: order_by
+          in: query
+          description: AEP-132 ordering expression (accepted but not yet implemented)
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Successfully retrieved containers
@@ -179,6 +191,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Container'
+        '401':
+          description: Authentication required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Permission denied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Container not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    patch:
+      summary: Update Container
+      description: Update an existing container instance using merge-patch semantics
+      operationId: updateContainer
+      tags:
+        - Containers
+      parameters:
+        - $ref: '#/components/parameters/ContainerIdPath'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/Container'
+      responses:
+        '200':
+          description: Container updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Container'
+        '400':
+          description: Bad request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Authentication required
           content:
@@ -513,6 +577,14 @@ components:
           format: date-time
           readOnly: true
           description: Timestamp when the container was last updated
+        etag:
+          type: string
+          readOnly: true
+          description: Opaque version identifier for optimistic concurrency (AEP-154). Derived from the underlying Kubernetes resource version.
+        uid:
+          type: string
+          readOnly: true
+          description: System-assigned immutable unique identifier (AEP-148). Derived from the underlying Kubernetes resource UID.
 
     ContainerSpec:
       type: object

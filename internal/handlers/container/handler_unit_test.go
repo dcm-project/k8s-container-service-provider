@@ -191,6 +191,46 @@ var _ = Describe("Container API Handlers", func() {
 				_, ok := resp.(oapigen.CreateContainer201JSONResponse)
 				Expect(ok).To(BeTrue(), "expected CreateContainer201JSONResponse")
 			})
+
+			// TC-U094: Container response includes etag field
+			It("response includes etag field (TC-U094)", func() {
+				body := validCreateBody()
+				repo.CreateFunc = func(_ context.Context, c v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error) {
+					return newContainerResult(c, id), nil
+				}
+
+				req := oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				}
+
+				resp, err := h.CreateContainer(context.Background(), req)
+				Expect(err).NotTo(HaveOccurred())
+
+				created, ok := resp.(oapigen.CreateContainer201JSONResponse)
+				Expect(ok).To(BeTrue(), "expected CreateContainer201JSONResponse")
+				Expect(created.Etag).NotTo(BeNil(), "etag must be set (AEP-154)")
+				Expect(*created.Etag).NotTo(BeEmpty(), "etag must be non-empty")
+			})
+
+			// TC-U095: Container response includes uid field
+			It("response includes uid field (TC-U095)", func() {
+				body := validCreateBody()
+				repo.CreateFunc = func(_ context.Context, c v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error) {
+					return newContainerResult(c, id), nil
+				}
+
+				req := oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				}
+
+				resp, err := h.CreateContainer(context.Background(), req)
+				Expect(err).NotTo(HaveOccurred())
+
+				created, ok := resp.(oapigen.CreateContainer201JSONResponse)
+				Expect(ok).To(BeTrue(), "expected CreateContainer201JSONResponse")
+				Expect(created.Uid).NotTo(BeNil(), "uid must be set (AEP-148)")
+				Expect(*created.Uid).NotTo(BeEmpty(), "uid must be non-empty")
+			})
 		})
 
 		Context("conflict handling", func() {
@@ -432,6 +472,52 @@ var _ = Describe("Container API Handlers", func() {
 			Expect(*listResp.Containers).To(BeEmpty())
 		})
 
+		// TC-U092: List accepts filter parameter without error
+		It("accepts filter parameter without error (TC-U092)", func() {
+			c1 := *newContainerResult(validCreateBody(), "id-1")
+			repo.ListFunc = func(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
+				return &v1alpha1.ContainerList{
+					Containers: &[]v1alpha1.Container{c1},
+				}, nil
+			}
+
+			req := oapigen.ListContainersRequestObject{
+				Params: v1alpha1.ListContainersParams{
+					Filter: util.Ptr(`metadata.name="test"`),
+				},
+			}
+
+			resp, err := h.ListContainers(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			listResp, ok := resp.(oapigen.ListContainers200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected ListContainers200JSONResponse")
+			Expect(listResp.Containers).NotTo(BeNil())
+		})
+
+		// TC-U093: List accepts order_by parameter without error
+		It("accepts order_by parameter without error (TC-U093)", func() {
+			c1 := *newContainerResult(validCreateBody(), "id-1")
+			repo.ListFunc = func(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
+				return &v1alpha1.ContainerList{
+					Containers: &[]v1alpha1.Container{c1},
+				}, nil
+			}
+
+			req := oapigen.ListContainersRequestObject{
+				Params: v1alpha1.ListContainersParams{
+					OrderBy: util.Ptr("create_time desc"),
+				},
+			}
+
+			resp, err := h.ListContainers(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			listResp, ok := resp.(oapigen.ListContainers200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected ListContainers200JSONResponse")
+			Expect(listResp.Containers).NotTo(BeNil())
+		})
+
 		// TC-U050: rejects invalid page_token
 		It("rejects invalid page_token (TC-U050)", func() {
 			repo.ListFunc = func(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
@@ -535,6 +621,147 @@ var _ = Describe("Container API Handlers", func() {
 			errResp, ok := resp.(oapigen.DeleteContainer404ApplicationProblemPlusJSONResponse)
 			Expect(ok).To(BeTrue(), "expected 404 response")
 			Expect(errResp.Type).To(Equal(v1alpha1.NOTFOUND))
+		})
+	})
+
+	// -----------------------------------------------------------------------
+	// UpdateContainer
+	// -----------------------------------------------------------------------
+	Describe("UpdateContainer", func() {
+		// TC-U087: returns 200 with updated container
+		It("returns 200 with updated container (TC-U087)", func() {
+			body := validCreateBody()
+			body.Image.Reference = "nginx:2.0"
+
+			repo.UpdateFunc = func(_ context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+				Expect(containerID).To(Equal("abc-123"))
+				Expect(spec.Image.Reference).To(Equal("nginx:2.0"))
+				return newContainerResult(spec, containerID), nil
+			}
+
+			req := oapigen.UpdateContainerRequestObject{
+				ContainerId: "abc-123",
+				Body:        &v1alpha1.Container{Spec: body},
+			}
+
+			resp, err := h.UpdateContainer(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			okResp, ok := resp.(oapigen.UpdateContainer200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected UpdateContainer200JSONResponse")
+
+			Expect(okResp.Id).NotTo(BeNil())
+			Expect(*okResp.Id).To(Equal("abc-123"))
+			Expect(okResp.Path).NotTo(BeNil())
+			Expect(okResp.Status).NotTo(BeNil())
+			Expect(okResp.CreateTime).NotTo(BeNil())
+			Expect(okResp.UpdateTime).NotTo(BeNil())
+			Expect(okResp.Spec.Image.Reference).To(Equal("nginx:2.0"))
+		})
+
+		// TC-U088: returns 404 for non-existent container
+		It("returns 404 for non-existent container (TC-U088)", func() {
+			body := validCreateBody()
+
+			repo.UpdateFunc = func(_ context.Context, containerID string, _ v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+				return nil, &store.NotFoundError{ID: containerID}
+			}
+
+			req := oapigen.UpdateContainerRequestObject{
+				ContainerId: "xyz-999",
+				Body:        &v1alpha1.Container{Spec: body},
+			}
+
+			resp, err := h.UpdateContainer(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			errResp, ok := resp.(oapigen.UpdateContainer404ApplicationProblemPlusJSONResponse)
+			Expect(ok).To(BeTrue(), "expected 404 response")
+			Expect(errResp.Type).To(Equal(v1alpha1.NOTFOUND))
+		})
+
+		// TC-U089: returns 400 for invalid patch content
+		DescribeTable("returns 400 for invalid patch content (TC-U089)",
+			func(mutate func(*v1alpha1.ContainerSpec)) {
+				body := validCreateBody()
+				mutate(&body)
+
+				req := oapigen.UpdateContainerRequestObject{
+					ContainerId: "abc-123",
+					Body:        &v1alpha1.Container{Spec: body},
+				}
+
+				resp, err := h.UpdateContainer(context.Background(), req)
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.UpdateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response for invalid patch")
+				Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
+			},
+			Entry("CPU min > max", func(c *v1alpha1.ContainerSpec) {
+				c.Resources.Cpu.Min = 4
+				c.Resources.Cpu.Max = 2
+			}),
+			Entry("memory min > max", func(c *v1alpha1.ContainerSpec) {
+				c.Resources.Memory.Min = "4GB"
+				c.Resources.Memory.Max = "2GB"
+			}),
+			Entry("reserved DCM label", func(c *v1alpha1.ContainerSpec) {
+				c.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "user-value"}
+			}),
+		)
+
+		// TC-U090: ignores readOnly fields in patch body
+		It("ignores readOnly fields in patch body (TC-U090)", func() {
+			body := validCreateBody()
+			runningStatus := v1alpha1.RUNNING
+			differentID := "different-id"
+			body.Image.Reference = "nginx:2.0"
+
+			repo.UpdateFunc = func(_ context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+				return newContainerResult(spec, containerID), nil
+			}
+
+			req := oapigen.UpdateContainerRequestObject{
+				ContainerId: "abc-123",
+				Body: &v1alpha1.Container{
+					Spec:   body,
+					Status: &runningStatus,
+					Id:     &differentID,
+				},
+			}
+
+			resp, err := h.UpdateContainer(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			okResp, ok := resp.(oapigen.UpdateContainer200JSONResponse)
+			Expect(ok).To(BeTrue(), "expected UpdateContainer200JSONResponse")
+
+			Expect(*okResp.Id).To(Equal("abc-123"), "id must reflect server value, not patch input")
+			Expect(*okResp.Status).To(Equal(v1alpha1.PENDING), "status must reflect server value, not patch input")
+		})
+
+		// TC-U091: returns 500 for unexpected store errors
+		It("returns 500 for unexpected store errors (TC-U091)", func() {
+			body := validCreateBody()
+
+			repo.UpdateFunc = func(_ context.Context, _ string, _ v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+				return nil, errors.New("database connection lost")
+			}
+
+			req := oapigen.UpdateContainerRequestObject{
+				ContainerId: "abc-123",
+				Body:        &v1alpha1.Container{Spec: body},
+			}
+
+			resp, err := h.UpdateContainer(context.Background(), req)
+			Expect(err).NotTo(HaveOccurred())
+
+			errResp, ok := resp.(oapigen.UpdateContainer500ApplicationProblemPlusJSONResponse)
+			Expect(ok).To(BeTrue(), "expected 500 response")
+			Expect(errResp.Type).To(Equal(v1alpha1.INTERNAL))
+			Expect(*errResp.Detail).To(Equal("an unexpected error occurred"))
+			Expect(*errResp.Detail).NotTo(ContainSubstring("database connection lost"))
 		})
 	})
 

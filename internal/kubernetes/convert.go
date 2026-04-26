@@ -41,6 +41,8 @@ func containerFromDeployment(deploy *appsv1.Deployment, instanceID string) v1alp
 	ns := deploy.Namespace
 	createTime := deploy.CreationTimestamp.Time
 	serviceType := v1alpha1.ContainerSpecServiceTypeContainer
+	rv := deploy.ResourceVersion
+	uid := string(deploy.UID)
 
 	k8sC := containers[0]
 
@@ -83,6 +85,8 @@ func containerFromDeployment(deploy *appsv1.Deployment, instanceID string) v1alp
 		Id:         &id,
 		Path:       &path,
 		CreateTime: &createTime,
+		Etag:       &rv,
+		Uid:        &uid,
 		Spec:       spec,
 	}
 }

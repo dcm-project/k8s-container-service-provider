@@ -97,6 +97,7 @@ type mockContainerRepo struct {
 	CreateFunc func(ctx context.Context, spec v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error)
 	GetFunc    func(ctx context.Context, containerID string) (*v1alpha1.Container, error)
 	ListFunc   func(ctx context.Context, maxPageSize int32, pageToken string) (*v1alpha1.ContainerList, error)
+	UpdateFunc func(ctx context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error)
 	DeleteFunc func(ctx context.Context, containerID string) error
 }
 
@@ -119,6 +120,13 @@ func (m *mockContainerRepo) List(ctx context.Context, maxPageSize int32, pageTok
 		panic("unexpected call to List")
 	}
 	return m.ListFunc(ctx, maxPageSize, pageToken)
+}
+
+func (m *mockContainerRepo) Update(ctx context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+	if m.UpdateFunc == nil {
+		panic("unexpected call to Update")
+	}
+	return m.UpdateFunc(ctx, containerID, spec)
 }
 
 func (m *mockContainerRepo) Delete(ctx context.Context, containerID string) error {

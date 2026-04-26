@@ -45,6 +45,42 @@ func (h *Handler) mapCreateError(err error, requestPath string) oapigen.CreateCo
 	}
 }
 
+func newUpdateError400(detail, requestPath string) oapigen.UpdateContainer400ApplicationProblemPlusJSONResponse {
+	return oapigen.UpdateContainer400ApplicationProblemPlusJSONResponse{
+		Type:     v1alpha1.INVALIDARGUMENT,
+		Title:    "Invalid argument",
+		Detail:   &detail,
+		Instance: &requestPath,
+	}
+}
+
+func (h *Handler) mapUpdateError(err error, requestPath string) oapigen.UpdateContainerResponseObject {
+	var notFound *store.NotFoundError
+	if errors.As(err, &notFound) {
+		detail := err.Error()
+		return oapigen.UpdateContainer404ApplicationProblemPlusJSONResponse{
+			Type:     v1alpha1.NOTFOUND,
+			Title:    "Not found",
+			Detail:   &detail,
+			Instance: &requestPath,
+		}
+	}
+
+	var invalid *store.InvalidArgumentError
+	if errors.As(err, &invalid) {
+		return newUpdateError400(err.Error(), requestPath)
+	}
+
+	h.logger.Error("unexpected error in UpdateContainer", "error", err)
+	detail := httperror.InternalDetail
+	return oapigen.UpdateContainer500ApplicationProblemPlusJSONResponse{
+		Type:     v1alpha1.INTERNAL,
+		Title:    httperror.InternalTitle,
+		Detail:   &detail,
+		Instance: &requestPath,
+	}
+}
+
 func (h *Handler) mapGetError(err error, requestPath string) oapigen.GetContainerResponseObject {
 	var notFound *store.NotFoundError
 	if errors.As(err, &notFound) {

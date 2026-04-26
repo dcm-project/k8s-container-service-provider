@@ -33,6 +33,7 @@ type mockContainerRepository struct {
 	CreateFunc func(ctx context.Context, spec v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error)
 	GetFunc    func(ctx context.Context, containerID string) (*v1alpha1.Container, error)
 	ListFunc   func(ctx context.Context, maxPageSize int32, pageToken string) (*v1alpha1.ContainerList, error)
+	UpdateFunc func(ctx context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error)
 	DeleteFunc func(ctx context.Context, containerID string) error
 }
 
@@ -55,6 +56,13 @@ func (m *mockContainerRepository) List(ctx context.Context, maxPageSize int32, p
 		panic("unexpected call to List")
 	}
 	return m.ListFunc(ctx, maxPageSize, pageToken)
+}
+
+func (m *mockContainerRepository) Update(ctx context.Context, containerID string, spec v1alpha1.ContainerSpec) (*v1alpha1.Container, error) {
+	if m.UpdateFunc == nil {
+		panic("unexpected call to Update")
+	}
+	return m.UpdateFunc(ctx, containerID, spec)
 }
 
 func (m *mockContainerRepository) Delete(ctx context.Context, containerID string) error {
@@ -100,6 +108,8 @@ func newContainerResult(spec v1alpha1.ContainerSpec, id string) *v1alpha1.Contai
 	status := v1alpha1.PENDING
 	path := "containers/" + id
 	ns := testNamespace
+	etag := "rv-1"
+	uid := "uid-" + id
 
 	spec.Metadata.Namespace = &ns
 
@@ -109,6 +119,8 @@ func newContainerResult(spec v1alpha1.ContainerSpec, id string) *v1alpha1.Contai
 		Status:     &status,
 		CreateTime: &now,
 		UpdateTime: &now,
+		Etag:       &etag,
+		Uid:        &uid,
 		Spec:       spec,
 	}
 }
