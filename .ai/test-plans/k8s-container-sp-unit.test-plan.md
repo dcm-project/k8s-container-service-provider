@@ -170,14 +170,14 @@ construction, debounce, indexer functions, registration payload builders) are
   - `"a"` + 63 chars (exceeds 63 character limit)
 - **Then:** Each returns HTTP `400` with an RFC 7807 error body containing type `INVALID_ARGUMENT`
 
-### TC-U013: CreateContainer returns 409 on name conflict
+### TC-U013: CreateContainer returns 409 when a container with the same id already exists
 
 - **Requirement:** REQ-API-080
 - **Priority:** High
 - **Type:** Unit
 - **Transitively covers:** TC-U026 (Conflict error is distinguishable — mock repository returns a typed conflict error that the handler maps to 409)
-- **Given:** Mock repository returns a conflict error for `metadata.name="existing-app"`
-- **When:** `POST` with `metadata.name="existing-app"` is called
+- **Given:** Mock repository returns a conflict error indicating a duplicate `dcm.project/dcm-instance-id` (simulating a pre-existing container with the same `id`)
+- **When:** `POST /api/v1alpha1/containers` is called
 - **Then:** HTTP status is `409` AND body is RFC 7807 error with type `ALREADY_EXISTS`
 
 ### TC-U014: CreateContainer validates request body
@@ -290,7 +290,7 @@ construction, debounce, indexer functions, registration payload builders) are
   |----------------------|-----------------|------------------|
   | Invalid request body | 400             | INVALID_ARGUMENT |
   | Container not found  | 404             | NOT_FOUND        |
-  | Name already exists  | 409             | ALREADY_EXISTS   |
+  | ID already exists    | 409             | ALREADY_EXISTS   |
   | Unexpected error     | 500             | INTERNAL         |
 
 - **When:** Each error is mapped to an HTTP response
@@ -658,7 +658,7 @@ dedicated test class or `Describe` block.
 - **Given:** A conflict error is created by the store error package
 - **When:** The error is inspected with `errors.Is` or `errors.As`
 - **Then:** It is correctly identified as a conflict error AND distinguishable from not-found and other errors
-- **Referenced by:** TC-U013 (CreateContainer 409), TC-I028 (Create conflict integration)
+- **Referenced by:** TC-U013 (CreateContainer 409), TC-I069 (Create duplicate id conflict integration)
 
 ### Resource Mapping & Conversion
 

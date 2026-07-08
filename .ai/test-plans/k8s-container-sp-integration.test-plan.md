@@ -509,15 +509,14 @@ for full descriptions.
 
 > **Suggested Ginkgo structure:** `Describe("K8s Store")` → `Context("conflict detection")` and `Context("namespace")`
 
-### TC-I028: Create returns conflict when Deployment name already exists
+### TC-I028: GenerateName allows same metadata.name with different instance IDs
 
-- **Requirement:** REQ-K8S-170, REQ-STR-030
+- **Requirement:** DD-140
 - **Priority:** High
 - **Type:** Integration
-- **Transitively covers:** TC-U026 (Conflict error is distinguishable)
-- **Given:** A Deployment named `"web-app"` already exists in the namespace
-- **When:** `Create` is called with `metadata.name="web-app"` (different container id)
-- **Then:** A conflict error is returned AND the existing Deployment is not modified
+- **Given:** A Deployment with `metadata.name="web-app"` (and instance ID `"original-id"`) already exists in the namespace
+- **When:** `Create` is called with `metadata.name="web-app"` but a different container id `"different-id"`
+- **Then:** The creation succeeds AND both Deployments exist in the namespace (generateName produces unique K8s resource names)
 
 ### TC-I029: All resources created in the configured namespace
 
@@ -1238,7 +1237,7 @@ for full descriptions.
 | REQ-API-180    | TC-I081                             | Covered |
 | REQ-API-210    | TC-I112                             | Covered |
 | REQ-STR-020    | TC-I009                             | Covered |
-| REQ-STR-030    | TC-I028                             | Covered |
+| REQ-STR-030    | TC-I069                             | Covered |
 | REQ-STR-040    | TC-I030, TC-I032                    | Covered |
 | REQ-STR-050    | TC-I034, TC-I035, TC-I078, TC-I086  | Covered |
 | REQ-STR-060    | TC-I036                             | Covered |
@@ -1259,7 +1258,7 @@ for full descriptions.
 | REQ-K8S-125    | TC-I024, TC-I074, TC-I092           | Covered |
 | REQ-K8S-150    | TC-I025, TC-I026                    | Covered |
 | REQ-K8S-155    | TC-I111                             | Covered |
-| REQ-K8S-170    | TC-I028, TC-I069                    | Covered |
+| REQ-K8S-170    | TC-I069                             | Covered |
 | REQ-K8S-180    | TC-I037                             | Covered |
 | REQ-K8S-190    | TC-I038                             | Covered |
 | REQ-K8S-200    | TC-I060 (E2E placeholder)           | Covered |
@@ -1302,7 +1301,7 @@ for full descriptions.
 | REQ-REG-060    | TC-I058                             | Covered |
 | REQ-REG-070    | TC-I059                             | Covered |
 | REQ-XC-ID-010  | TC-I010 (dcm.project/dcm-instance-id label), TC-I009 (metadata.name as generateName prefix) | Covered |
-| REQ-XC-ID-020  | TC-I028, TC-I069                    | Covered |
+| REQ-XC-ID-020  | TC-I069                             | Covered |
 | REQ-XC-LBL-010 | TC-I010, TC-I027, TC-I070           | Covered |
 | REQ-XC-ERR-010 | TC-I008                             | Covered |
 | REQ-XC-ERR-020 | TC-I008                             | Covered |
@@ -1327,7 +1326,7 @@ by integration tests in this plan:
 |---|---|---|
 | TC-U024 | ContainerRepository interface satisfied | TC-I009 |
 | TC-U025 | Not-found error distinguishable | TC-I032, TC-I039 |
-| TC-U026 | Conflict error distinguishable | TC-I028 |
+| TC-U026 | Conflict error distinguishable | TC-I069 |
 | TC-U027 | CPU → K8s resource quantities | TC-I012 |
 | TC-U028 | Memory unit conversion | TC-I013 |
 | TC-U029 | Pod phase → DCM status | TC-I044, TC-I062, TC-I063, TC-I064 |
