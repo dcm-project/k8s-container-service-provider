@@ -11,7 +11,7 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("container %q not found", e.ID)
 }
 
-// ConflictError indicates a resource conflict (e.g., duplicate name or ID).
+// ConflictError indicates a resource conflict (e.g., duplicate instance ID).
 type ConflictError struct {
 	Message string
 }

@@ -337,7 +337,7 @@ size limits.
 | REQ-API-050 | Client-specified IDs MUST be validated against AEP-122 pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` | MUST | |
 | REQ-API-060 | Newly created containers MUST have status set to PENDING | MUST | |
 | REQ-API-070 | The create response MUST populate all read-only fields: `id`, `path`, `status`, `create_time`, `update_time`, `metadata.namespace` | MUST | |
-| REQ-API-080 | POST MUST return 409 Conflict when a container with the same `metadata.name` already exists | MUST | SC-001 |
+| REQ-API-080 | POST MUST return 409 Conflict when a container with the same `id` already exists | MUST | SC-001, DD-140 |
 | REQ-API-090 | POST MUST validate required fields in the request body (e.g., `image`) | MUST | SC-002 |
 | REQ-API-100 | GET `/api/v1alpha1/containers` MUST return a paginated list conforming to ContainerList schema | MUST | SC-006 |
 | REQ-API-110 | GET MUST support `max_page_size` and `page_token` query parameters for pagination | MUST | |
@@ -358,7 +358,7 @@ size limits.
 |-----------------|-------------|------------|
 | Invalid request body | 400 | INVALID_ARGUMENT |
 | Container not found | 404 | NOT_FOUND |
-| Name already exists | 409 | ALREADY_EXISTS |
+| ID already exists | 409 | ALREADY_EXISTS |
 | Unexpected error | 500 | INTERNAL |
 
 > **Note:** 401 and 403 responses are defined in the OpenAPI spec for forward
@@ -419,8 +419,8 @@ size limits.
 ##### AC-API-070: Create container - conflict
 
 - **Validates:** REQ-API-080
-- **Given** a container with metadata.name "web-app" already exists
-- **When** POST is called with another container with metadata.name "web-app"
+- **Given** a container with id "existing-id" already exists
+- **When** POST is called with `?id=existing-id`
 - **Then** the response MUST be 409 Conflict with an RFC 7807 error body
 - **And** the existing resource MUST NOT be modified
 
@@ -539,7 +539,7 @@ topic 5).
 |----|-------------|----------|-------|
 | REQ-STR-010 | The SP MUST define a container storage interface with Create, Get, List, and Delete operations | MUST | DD-040 |
 | REQ-STR-020 | The Create operation MUST return the created Container with all server-generated read-only fields populated | MUST | |
-| REQ-STR-030 | The Create operation MUST return a conflict error if a container with the same `metadata.name` already exists | MUST | |
+| REQ-STR-030 | The Create operation MUST return a conflict error if a container with the same `id` already exists | MUST | DD-140 |
 | REQ-STR-040 | The Get operation MUST return the matching Container for a valid containerId, or a not-found error if no match exists | MUST | |
 | REQ-STR-050 | The List operation MUST accept pagination parameters (`max_page_size`, `page_token`) and return a paginated ContainerList | MUST | SC-006 |
 | REQ-STR-060 | The List operation MUST default to max_page_size=50 when not specified | MUST | |
@@ -565,7 +565,7 @@ topic 5).
 | REQ-K8S-125 | When any port has `visibility=external`, the Service type MUST be the configured `externalServiceType` | MUST | |
 | REQ-K8S-150 | When all ports have `visibility=none` (or no ports exist), no Service MUST be created | MUST | |
 | REQ-K8S-155 | When `network` is provided but `ports` is absent or null, the SP MUST treat it identically to having no ports — no Service is created and no error is returned | MUST | D2 |
-| REQ-K8S-170 | The SP MUST return a conflict error if a Deployment with the same `metadata.name` already exists in the configured namespace | MUST | SC-001 |
+| REQ-K8S-170 | The SP MUST return a conflict error if a Deployment with the same `dcm-instance-id` label already exists in the configured namespace | MUST | SC-001, DD-140 |
 | REQ-K8S-180 | Delete MUST remove the Deployment (cascading to Pods) and associated Service | MUST | |
 | REQ-K8S-190 | Delete MUST succeed even if no Service exists for the container | MUST | |
 | REQ-K8S-200 | The SP MUST support authentication via kubeconfig file | MUST | |
@@ -626,8 +626,8 @@ topic 5).
 ##### AC-STR-020: Create conflict detection
 
 - **Validates:** REQ-STR-030
-- **Given** a container with metadata.name "web-app" already exists
-- **When** Create is called with another container with metadata.name "web-app"
+- **Given** a container with `dcm.project/dcm-instance-id` "existing-id" already exists
+- **When** Create is called with `dcm.project/dcm-instance-id` "existing-id"
 - **Then** a conflict error MUST be returned
 
 ##### AC-STR-030: Get operation - found
@@ -828,8 +828,8 @@ topic 5).
 ##### AC-K8S-180: Deployment conflict detection
 
 - **Validates:** REQ-K8S-170
-- **Given** a Deployment named "web-app" exists in the namespace
-- **When** Create is called with metadata.name "web-app"
+- **Given** a Deployment with `dcm.project/dcm-instance-id` label "existing-id" exists in the namespace
+- **When** Create is called with `dcm.project/dcm-instance-id` "existing-id"
 - **Then** a conflict error MUST be returned
 - **And** the existing Deployment MUST NOT be modified
 
@@ -1330,7 +1330,7 @@ Depends on Topic 1 (HTTP Server).
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
 | REQ-XC-ID-010 | Two identifiers MUST be used for container resources: `id` (DCM identifier, used in URL paths and stored as `dcm.project/dcm-instance-id` label) and `metadata.name` (used as the `generateName` prefix for Kubernetes Deployments and Services; the actual K8s resource name is server-assigned) | MUST | DD-140 |
-| REQ-XC-ID-020 | Conflict detection MUST be based on `metadata.name`, not `id`. Both uniqueness constraints apply independently | MUST | SC-001 |
+| REQ-XC-ID-020 | Conflict detection MUST be based on `id` (`dcm-instance-id` label). `metadata.name` is a non-unique `generateName` prefix per DD-140 | MUST | SC-001, DD-140 |
 
 #### Acceptance Criteria
 
@@ -1342,12 +1342,13 @@ Depends on Topic 1 (HTTP Server).
 - **Then** `id` MUST be used in URL paths (`/containers/abc-123`) and as the `dcm.project/dcm-instance-id` label
 - **And** `metadata.name` MUST be used as the `generateName` prefix for Kubernetes Deployments and Services (e.g., `"web-app-"`). The actual K8s resource name is server-assigned.
 
-##### AC-XC-ID-020: Conflict detection based on metadata.name
+##### AC-XC-ID-020: Conflict detection based on dcm.project/dcm-instance-id
 
 - **Validates:** REQ-XC-ID-020
-- **Given** a container with metadata.name "web-app" already exists
-- **When** a new container with a different `id` but the same metadata.name "web-app" is created
+- **Given** a container with `dcm.project/dcm-instance-id` "existing-id" already exists
+- **When** a new container with a different `metadata.name` but the same `dcm.project/dcm-instance-id` "existing-id" is created
 - **Then** the request MUST be rejected with a conflict error
+- **And** creating a container with the same `metadata.name` but a different `dcm.project/dcm-instance-id` MUST succeed (per DD-140, `metadata.name` is a non-unique `generateName` prefix)
 
 ### 5.2 Resource Labeling
 
@@ -1705,9 +1706,10 @@ gap analysis. Each is rooted in an existing requirement or the OpenAPI contract.
 **Related requirements:** REQ-API-080, REQ-K8S-170, REQ-XC-ID-020
 
 A Create request MUST be rejected with 409 Conflict when the supplied
-`id` (via `?id=`) matches the `dcm.project/dcm-instance-id` of an existing container, in
-addition to the existing `metadata.name` conflict check. Both uniqueness
-constraints apply independently.
+`id` (via `?id=`, or server-generated) matches the `dcm.project/dcm-instance-id`
+of an existing container. This is the sole conflict-detection mechanism.
+`metadata.name` is a non-unique `generateName` prefix per DD-140 and is NOT
+subject to uniqueness enforcement.
 
 ### SC-002: `min > max` for CPU/memory
 

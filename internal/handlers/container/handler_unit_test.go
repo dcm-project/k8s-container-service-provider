@@ -3,6 +3,7 @@ package container_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"time"
@@ -234,11 +235,11 @@ var _ = Describe("Container API Handlers", func() {
 		})
 
 		Context("conflict handling", func() {
-			// TC-U013: returns 409 on name conflict
-			It("returns 409 on name conflict (TC-U013)", func() {
+			// TC-U013: returns 409 when a container with the same id already exists
+			It("returns 409 when a container with the same id already exists (TC-U013)", func() {
 				body := validCreateBody()
-				repo.CreateFunc = func(_ context.Context, _ v1alpha1.ContainerSpec, _ string) (*v1alpha1.Container, error) {
-					return nil, &store.ConflictError{Message: body.Metadata.Name}
+				repo.CreateFunc = func(_ context.Context, _ v1alpha1.ContainerSpec, id string) (*v1alpha1.Container, error) {
+					return nil, &store.ConflictError{Message: fmt.Sprintf("container with instance ID %q already exists", id)}
 				}
 
 				req := oapigen.CreateContainerRequestObject{
