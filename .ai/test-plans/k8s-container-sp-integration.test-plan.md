@@ -262,10 +262,10 @@ for full descriptions.
 - **Requirement:** REQ-K8S-040
 - **Priority:** High
 - **Type:** Integration
-- **Transitively covers:** TC-U027 (CPU values map to Kubernetes resource quantities)
-- **Given:** A container with `cpu.min=1`, `cpu.max=2`
+- **Transitively covers:** TC-U027 (CPU millicore strings map to Kubernetes resource quantities)
+- **Given:** A container with `cpu.min="1000m"`, `cpu.max="4000m"`
 - **When:** `Create` is called
-- **Then:** Container spec `resources.requests.cpu` is `"1"` AND `resources.limits.cpu` is `"2"`
+- **Then:** Container spec `resources.requests.cpu` is 1000 millicores AND `resources.limits.cpu` is 4000 millicores
 
 ### TC-I013: Memory resources convert and map correctly
 
@@ -1247,6 +1247,7 @@ for full descriptions.
 | REQ-K8S-020    | TC-I010, TC-I070, TC-I071           | Covered |
 | REQ-K8S-030    | TC-I011                             | Covered |
 | REQ-K8S-040    | TC-I012                             | Covered |
+| REQ-K8S-045    | TC-U055 (unit-level)                | Covered (unit) |
 | REQ-K8S-050    | TC-I013                             | Covered |
 | REQ-K8S-060    | TC-I014, TC-I018                    | Covered |
 | REQ-K8S-070    | TC-I015, TC-I018                    | Covered |
@@ -1327,7 +1328,7 @@ by integration tests in this plan:
 | TC-U024 | ContainerRepository interface satisfied | TC-I009 |
 | TC-U025 | Not-found error distinguishable | TC-I032, TC-I039 |
 | TC-U026 | Conflict error distinguishable | TC-I069 |
-| TC-U027 | CPU → K8s resource quantities | TC-I012 |
+| TC-U027 | CPU millicore strings → K8s resource quantities | TC-I012 |
 | TC-U028 | Memory unit conversion | TC-I013 |
 | TC-U029 | Pod phase → DCM status | TC-I044, TC-I062, TC-I063, TC-I064 |
 | TC-U030 | Pod Succeeded ignored | TC-I065 |

@@ -137,47 +137,47 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 
 		// Missing required top-level fields inside spec
 		Entry("missing image",
-			`{"spec":{"service_type":"container","metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required image field"),
 		Entry("missing metadata",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required metadata field"),
 		Entry("missing resources",
 			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"}}}`,
 			"missing required resources field"),
 		Entry("missing service_type",
-			`{"spec":{"image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required service_type field"),
 
 		// Missing required nested fields
 		Entry("missing metadata.name",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required metadata.name"),
 		Entry("missing image.reference",
-			`{"spec":{"service_type":"container","image":{},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","image":{},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required image.reference"),
 		Entry("missing resources.cpu",
 			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required resources.cpu"),
 		Entry("missing resources.memory",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2}}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"}}}}`,
 			"missing required resources.memory"),
 
 		// Invalid types
 		Entry("invalid service_type enum",
-			`{"spec":{"service_type":"invalid","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"invalid","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"invalid service_type enum value"),
-		Entry("cpu.min is string instead of int",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"one","max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
-			"cpu.min wrong type"),
-		Entry("cpu.max is negative",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":-1},"memory":{"min":"1GB","max":"2GB"}}}}`,
-			"cpu.max negative value"),
+		Entry("cpu.min invalid pattern",
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"one","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			"cpu.min invalid millicore pattern"),
+		Entry("cpu.max is integer instead of string",
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			"cpu.max wrong type"),
 
-		// TC-U055: cpu.min=0 rejected by OpenAPI minimum: 1
-		Entry("cpu.min is 0 (TC-U055)",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":0,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
-			"cpu.min below minimum 1"),
+		// TC-U055: cpu.min missing millicore suffix rejected by pattern
+		Entry("cpu.min missing suffix (TC-U055)",
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"0","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			"cpu.min missing millicore suffix"),
 
 		// Malformed JSON
 		Entry("malformed JSON",
@@ -191,28 +191,28 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 
 		// Invalid nested object structure
 		Entry("network.ports is string instead of array",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":"invalid"}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":"invalid"}}}`,
 			"network.ports wrong type"),
 		Entry("missing cpu.min",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"missing required cpu.min"),
 
 		// TC-U053: invalid metadata.name format
 		Entry("metadata.name with invalid characters (TC-U053)",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"Invalid_Name!"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"Invalid_Name!"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`,
 			"metadata.name with invalid characters"),
 
 		// TC-U056: port out of range
 		Entry("container_port exceeds 65535 (TC-U056)",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":[{"container_port":70000}]}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":[{"container_port":70000}]}}}`,
 			"container_port above maximum 65535"),
 		Entry("container_port is 0 (TC-U056)",
-			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":[{"container_port":0}]}}}`,
+			`{"spec":{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}},"network":{"ports":[{"container_port":0}]}}}`,
 			"container_port below minimum 1"),
 
 		// TC-U080: raw Container body without spec wrapper rejected
 		Entry("raw Container body without spec wrapper (TC-U080)",
-			`{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}`,
+			`{"service_type":"container","image":{"reference":"nginx:latest"},"metadata":{"name":"test"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}`,
 			"raw Container body missing required spec wrapper"),
 	)
 
@@ -221,7 +221,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 		func(invalidID string, description string) {
 			baseURL := startValidationServer()
 
-			body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`
+			body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`
 			resp, err := http.Post(
 				baseURL+"/api/v1alpha1/containers?id="+invalidID,
 				"application/json",
@@ -254,7 +254,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 		func(validID string, description string) {
 			baseURL := startValidationServer()
 
-			body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`
+			body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`
 			resp, err := http.Post(
 				baseURL+"/api/v1alpha1/containers?id="+validID,
 				"application/json",
@@ -281,7 +281,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 	It("accepts network object without ports field (TC-U059)", func() {
 		baseURL := startValidationServer()
 
-		body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}},"network":{}}}`
+		body := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}},"network":{}}}`
 		resp, err := http.Post(
 			baseURL+"/api/v1alpha1/containers",
 			"application/json",
@@ -335,7 +335,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 
 		baseURL := fmt.Sprintf("http://%s", addr)
 
-		reqBody := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":1,"max":2},"memory":{"min":"1GB","max":"2GB"}}}}`
+		reqBody := `{"spec":{"service_type":"container","metadata":{"name":"test"},"image":{"reference":"nginx:latest"},"resources":{"cpu":{"min":"1000m","max":"2000m"},"memory":{"min":"1GB","max":"2GB"}}}}`
 		resp, err := http.Post(
 			baseURL+"/api/v1alpha1/containers",
 			"application/json",

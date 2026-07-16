@@ -3,10 +3,10 @@
 ## Overview
 
 - **Related Spec:** .ai/specs/k8s-container-sp.spec.md
-- **Related Requirements:** REQ-HTTP-050, REQ-HTTP-091, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–095, REQ-MON-110–120, REQ-MON-150, REQ-MON-170, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–040, REQ-XC-CFG-010–030
+- **Related Requirements:** REQ-HTTP-050, REQ-HTTP-091, REQ-HTTP-090, REQ-HLT-010–040, REQ-API-010–180, REQ-STR-010, REQ-STR-080, REQ-K8S-040, REQ-K8S-045, REQ-K8S-050, REQ-K8S-230, REQ-MON-040–095, REQ-MON-110–120, REQ-MON-150, REQ-MON-170, REQ-REG-020, REQ-XC-ID-010–020, REQ-XC-ERR-010–040, REQ-XC-CFG-010–030
 - **Framework:** Ginkgo v2 + Gomega
 - **Created:** 2026-02-17
-- **Last Updated:** 2026-04-29 (updated REQ-XC-ID-010 coverage for generateName)
+- **Last Updated:** 2026-07-24 (millicore CPU strings: updated DD-100, REQ-K8S-040, added REQ-K8S-045, TC-U090, TC-U091)
 
 Unit tests verify individual components in isolation. All external dependencies
 (ContainerRepository, K8s client, NATS, HTTP server) are replaced with mocks,
@@ -185,7 +185,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Requirement:** REQ-API-090, REQ-HTTP-090 (OpenAPI contract enforcement)
 - **Priority:** High
 - **Type:** Unit (table-driven)
-- **Transitively covers:** TC-U052 (invalid serviceType), TC-U053 (invalid metadata.name format), TC-U054 (invalid memory format), TC-U055 (CPU below minimum), TC-U056 (port out of range)
+- **Transitively covers:** TC-U052 (invalid serviceType), TC-U053 (invalid metadata.name format), TC-U054 (invalid memory format), TC-U055 (invalid CPU millicore format), TC-U056 (port out of range)
 - **Given:** Request bodies each missing a required field or containing an invalid value
 - **When:** `POST` is called for each:
   - Missing `image` entirely
@@ -201,7 +201,7 @@ construction, debounce, indexer functions, registration payload builders) are
   - Invalid `serviceType` value (e.g., `"not-a-service-type"`) (TC-U052)
   - Invalid `metadata.name` format (e.g., `"Invalid_Name!"`) (TC-U053)
   - Invalid memory format (e.g., `"10XB"`) (TC-U054)
-  - CPU value below minimum (e.g., `cpu.min=0`) (TC-U055)
+  - Invalid CPU millicore format (e.g., `cpu.min="invalid"`) (TC-U055)
   - Port out of range (e.g., `containerPort=99999`) (TC-U056)
 - **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
 
@@ -326,7 +326,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit (table-driven)
 - **Given:** Request bodies with invalid resource constraints
 - **When:** `POST` is called for each:
-  - `resources.cpu.min=4`, `resources.cpu.max=2` (CPU min > max)
+  - `resources.cpu.min="4000m"`, `resources.cpu.max="2000m"` (CPU min > max)
   - `resources.memory.min="4GB"`, `resources.memory.max="2GB"` (memory min > max)
 - **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
 
@@ -662,15 +662,45 @@ dedicated test class or `Describe` block.
 
 ### Resource Mapping & Conversion
 
-#### TC-U027: CPU values map to Kubernetes resource quantities
+#### TC-U027: CPU millicore strings map to Kubernetes resource quantities
 
 - **Requirement:** REQ-K8S-040
 - **Priority:** High
 - **Type:** Unit
-- **Given:** Container CPU with `min=1`, `max=2`
-- **When:** CPU is converted to Kubernetes resource quantities
-- **Then:** `requests.cpu` is `"1"` AND `limits.cpu` is `"2"`
+- **Given:** Container CPU with `min="1000m"`, `max="4000m"`
+- **When:** CPU is converted to Kubernetes resource quantities via `units.ConvertCPU`
+- **Then:** `requests.cpu` is 1000 millicores AND `limits.cpu` is 4000 millicores
 - **Referenced by:** TC-I012 (CPU resources integration test)
+
+#### TC-U090: ConvertCPU edge cases (invalid max, empty, zero)
+
+- **Requirement:** REQ-K8S-040
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Various edge-case CPU inputs:
+  - `min="1000m"`, `max="invalid"` (invalid Max)
+  - `min=""`, `max=""` (empty strings)
+  - `min="0m"`, `max="0m"` (explicit zero)
+  - `min="500m"`, `max="1500m"` (fractional sub-core)
+- **When:** `units.ConvertCPU` is called
+- **Then:**
+  - Invalid Max returns an error containing `"cpu.max"`
+  - Empty strings return an error
+  - Zero values parse successfully with 0 millicore quantities
+  - Fractional values parse to correct millicore quantities
+
+#### TC-U091: CPUQuantityToAPI edge cases (zero, fractional core)
+
+- **Requirement:** REQ-K8S-040
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** Kubernetes resource quantities:
+  - `resource.MustParse("0")` (zero)
+  - `resource.MustParse("0.5")` (fractional core)
+- **When:** `units.CPUQuantityToAPI` is called
+- **Then:**
+  - Zero quantity returns `"0m"`
+  - Fractional core `0.5` returns `"500m"`
 
 #### TC-U028: Memory units convert from schema format to Kubernetes format
 
@@ -835,14 +865,16 @@ dedicated test class or `Describe` block.
 - **Then:** The request is rejected with 400 INVALID_ARGUMENT
 - **Referenced by:** TC-U014 (CreateContainer validates request body)
 
-#### TC-U055: CPU value below minimum rejected
+#### TC-U055: Invalid CPU millicore format rejected
 
 - **Requirement:** REQ-API-090
 - **Priority:** High
-- **Type:** Unit (validation sub-case)
-- **Given:** A request body with `resources.cpu.min=0`
-- **When:** OpenAPI validation is applied
-- **Then:** The request is rejected with 400 INVALID_ARGUMENT
+- **Type:** Unit (table-driven, handler-level)
+- **Given:** Request bodies with invalid CPU millicore strings
+- **When:** `POST` is called for each:
+  - `resources.cpu.min="invalid"`, `resources.cpu.max="4000m"` (invalid Min)
+  - `resources.cpu.min="1000m"`, `resources.cpu.max="invalid"` (invalid Max)
+- **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
 - **Referenced by:** TC-U014 (CreateContainer validates request body)
 
 #### TC-U056: Port out of range rejected
@@ -1043,7 +1075,8 @@ dedicated test class or `Describe` block.
 | REQ-API-210   | TC-U081                           | Covered |
 | REQ-STR-010   | TC-U024 (via TC-I009)             | Covered |
 | REQ-STR-080   | TC-U025 (via TC-U019/U021), TC-U026 (via TC-U013) | Covered |
-| REQ-K8S-040   | TC-U027 (via TC-I012)             | Covered |
+| REQ-K8S-040   | TC-U027, TC-U090, TC-U091 (via TC-I012) | Covered |
+| REQ-K8S-045   | TC-U055 (handler-level error propagation) | Covered |
 | REQ-K8S-155   | TC-U059 (via TC-I111)             | Covered |
 | REQ-K8S-050   | TC-U028 (via TC-I013)             | Covered |
 | REQ-K8S-230   | TC-U029 (via TC-U031, TC-I062–I064), TC-U030 (via TC-I065) | Covered |
@@ -1071,8 +1104,8 @@ dedicated test class or `Describe` block.
 | REQ-MON-131   | TC-U079                           | Covered |
 | REQ-MON-170   | TC-U072, TC-U079                  | Covered |
 
-**Total:** 76 test case IDs (2 retired: TC-U065, TC-U066) — 45 in behavioural
-test classes, 31 in the utility index (tested transitively through higher-level
+**Total:** 78 test case IDs (2 retired: TC-U065, TC-U066) — 45 in behavioural
+test classes, 33 in the utility index (tested transitively through higher-level
 behavioural and integration tests).
 
 > Requirements not listed above (REQ-HTTP-010–040, REQ-HTTP-080,
@@ -1091,4 +1124,4 @@ behavioural and integration tests).
 - **Compile-time checks:** TC-U008 and TC-U024 are implemented as `var _ StrictServerInterface = (*Handler)(nil)` in their respective test files. They do not need their own `It` block.
 - **Time-sensitive tests:** TC-U006 depends on time. Use a clock interface or inject a time function to avoid flaky tests.
 - **REQ-HLT-040 (lightweight):** TC-U007 verifies the handler's structural simplicity. Runtime performance is a design constraint validated during code review, not a functional test.
-- **Utility transitive coverage:** Utility TCs (TC-U007/U008/U024–U030/U036–U045/U052–U059/U067–U068) have no dedicated `Describe` blocks. Their coverage is achieved through the behavioural tests that reference them. The integration test plan documents the corresponding integration-level transitive references.
+- **Utility transitive coverage:** Utility TCs (TC-U007/U008/U024–U030/U036–U045/U052–U059/U067–U068/U090–U091) have no dedicated `Describe` blocks. Their coverage is achieved through the behavioural tests that reference them. The integration test plan documents the corresponding integration-level transitive references.

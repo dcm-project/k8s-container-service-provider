@@ -2,9 +2,11 @@
 package apiserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -66,6 +68,10 @@ func requestInstance(r *http.Request) *string {
 	}
 	return util.Ptr(r.URL.RequestURI())
 }
+
+// maxRequestBodyLogSize is the maximum number of bytes captured from the
+// request body for logging on client errors (4xx responses).
+const maxRequestBodyLogSize = 4096
 
 // readinessProbeTimeout is how long to wait for the server to confirm it is
 // serving HTTP requests before giving up and skipping the onReady callback.
@@ -246,19 +252,46 @@ func requestTimeoutMiddleware(timeout time.Duration) func(http.Handler) http.Han
 }
 
 // requestLoggingMiddleware logs each HTTP request at INFO level with method,
-// path, response status code, and duration.
+// path, response status code, and duration. For 4xx responses, the request
+// body is included at WARN level to aid debugging client errors.
 func requestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
+
+			// Buffer the request body so it can be logged on client errors
+			// and still be read by downstream handlers.
+			var bodyBytes []byte
+			if r.Body != nil {
+				bodyBytes, _ = io.ReadAll(io.LimitReader(r.Body, maxRequestBodyLogSize))
+				// Restore the body for downstream handlers.
+				r.Body = io.NopCloser(io.MultiReader(
+					bytes.NewReader(bodyBytes),
+					r.Body,
+				))
+			}
+
 			sw := &statusRecordingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 			next.ServeHTTP(sw, r)
-			logger.Info("http request",
+
+			attrs := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", sw.statusCode,
 				"duration", time.Since(start).String(),
-			)
+			}
+
+			if sw.statusCode >= 400 && sw.statusCode < 500 {
+				if len(bodyBytes) > 0 {
+					attrs = append(attrs, "body", string(bodyBytes))
+				}
+				if r.URL.RawQuery != "" {
+					attrs = append(attrs, "query", r.URL.RawQuery)
+				}
+				logger.Warn("http request", attrs...)
+			} else {
+				logger.Info("http request", attrs...)
+			}
 		})
 	}
 }

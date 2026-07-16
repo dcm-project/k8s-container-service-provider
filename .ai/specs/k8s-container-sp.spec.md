@@ -553,7 +553,8 @@ topic 5).
 | REQ-K8S-010 | The SP MUST create a Kubernetes Deployment with replicas=1 for each container creation request | MUST | DD-010 |
 | REQ-K8S-020 | All created resources (Deployment, Service) MUST carry DCM labels: `dcm.project/managed-by=dcm`, `dcm.project/dcm-instance-id=<containerId>`, `dcm.project/dcm-service-type=container` | MUST | SC-004 |
 | REQ-K8S-030 | The Deployment container spec MUST use `image.reference` as the container image | MUST | |
-| REQ-K8S-040 | Container CPU resources MUST be mapped to K8s resource requests and limits | MUST | DD-100 |
+| REQ-K8S-040 | Container CPU resources (millicore strings, e.g. `"500m"`, `"2000m"`) MUST be mapped to K8s resource requests and limits via `units.ConvertCPU` | MUST | DD-100 |
+| REQ-K8S-045 | Resource conversion errors in `buildDeployment` MUST be propagated to the caller as errors, not silently ignored | MUST | |
 | REQ-K8S-050 | Container memory resources MUST be converted from schema format (MB/GB/TB) to K8s format (Mi/Gi/Ti) | MUST | DD-090 |
 | REQ-K8S-060 | When `process.command` is provided, it MUST be mapped to the container spec command | MUST | |
 | REQ-K8S-070 | When `process.args` is provided, it MUST be mapped to the container spec args | MUST | |
@@ -717,11 +718,18 @@ topic 5).
 ##### AC-K8S-040: CPU resource mapping
 
 - **Validates:** REQ-K8S-040
-- **Given** a container with cpu.min=1, cpu.max=2
+- **Given** a container with cpu.min="1000m", cpu.max="4000m"
 - **When** the Deployment is created
 - **Then** the container spec MUST set:
-  - `resources.requests.cpu`: "1"
-  - `resources.limits.cpu`: "2"
+  - `resources.requests.cpu`: quantity equivalent to 1000 millicores
+  - `resources.limits.cpu`: quantity equivalent to 4000 millicores
+
+##### AC-K8S-045: Resource conversion error propagation
+
+- **Validates:** REQ-K8S-045
+- **Given** a container spec with a malformed CPU or memory value that passes OpenAPI validation but fails `units.ConvertCPU` or `units.ConvertMemory`
+- **When** `buildDeployment` is called
+- **Then** an error MUST be returned to the caller (not silently ignored)
 
 ##### AC-K8S-050: Memory resource mapping
 
@@ -1684,13 +1692,15 @@ for DCM consumers who use decimal units.
 
 **Related requirements:** REQ-K8S-050
 
-### DD-100: Integer-only CPU values
+### DD-100: Millicore CPU strings
 
-**Decision:** CPU uses integer values (minimum 1). Fractional CPU is not
-supported in v1.
+**Decision:** CPU uses millicore string values (e.g. `"500m"`, `"2000m"`).
+The OpenAPI pattern `^[1-9][0-9]*m?$` enforces positive non-zero values.
+Fractional CPU is supported via millicore notation.
 
-**Rationale:** Aligns with Service Type Definitions which define CPU as integer
-cores. Fractional CPU (e.g., 500m) may be added in a later version.
+**Rationale:** Millicore strings align with Kubernetes native resource quantity
+format, enabling sub-core CPU allocation (e.g. `"500m"` = 0.5 cores). The
+`units.ConvertCPU` function parses these strings into `resource.Quantity` values.
 
 **Related requirements:** REQ-K8S-040
 
@@ -1717,8 +1727,10 @@ subject to uniqueness enforcement.
 
 A Create request MUST be rejected with 400 Bad Request when
 `resources.cpu.min > resources.cpu.max` or
-`resources.memory.min > resources.memory.max`. The API treats this as an
-invalid argument.
+`resources.memory.min > resources.memory.max` (CPU values are compared as
+millicore quantities). A request with malformed CPU millicore strings (e.g.
+`"invalid"`) that bypass OpenAPI validation MUST also be rejected with 400
+Bad Request. The API treats these as invalid arguments.
 
 ### SC-003: Service creation atomicity
 

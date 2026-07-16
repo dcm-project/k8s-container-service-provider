@@ -22,8 +22,12 @@ func validateContainerID(id string) error {
 }
 
 func validateResources(res v1alpha1.ContainerResources) error {
-	if res.Cpu.Min > res.Cpu.Max {
-		return fmt.Errorf("cpu.min (%d) must not exceed cpu.max (%d)", res.Cpu.Min, res.Cpu.Max)
+	cpuReq, cpuLim, err := units.ConvertCPU(res.Cpu)
+	if err != nil {
+		return err
+	}
+	if cpuReq.Cmp(cpuLim) > 0 {
+		return fmt.Errorf("cpu.min (%s) must not exceed cpu.max (%s)", res.Cpu.Min, res.Cpu.Max)
 	}
 
 	minMem, err := units.ConvertMemory(res.Memory.Min)

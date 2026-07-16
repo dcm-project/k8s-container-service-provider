@@ -324,13 +324,35 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
 				},
 				Entry("CPU min > max", func(c *v1alpha1.ContainerSpec) {
-					c.Resources.Cpu.Min = 4
-					c.Resources.Cpu.Max = 2
+					c.Resources.Cpu.Min = "4000m"
+					c.Resources.Cpu.Max = "2000m"
 				}),
 				Entry("memory min > max", func(c *v1alpha1.ContainerSpec) {
 					c.Resources.Memory.Min = "4GB"
 					c.Resources.Memory.Max = "2GB"
 				}),
+			)
+
+			// TC-U055: rejects invalid CPU millicore strings
+			DescribeTable("rejects invalid CPU millicore strings (TC-U055)",
+				func(cpuMin, cpuMax string) {
+					body := validCreateBody()
+					body.Resources.Cpu.Min = cpuMin
+					body.Resources.Cpu.Max = cpuMax
+
+					req := oapigen.CreateContainerRequestObject{
+						Body: &v1alpha1.Container{Spec: body},
+					}
+
+					resp, err := h.CreateContainer(context.Background(), req)
+					Expect(err).NotTo(HaveOccurred())
+
+					errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+					Expect(ok).To(BeTrue(), "expected 400 response for invalid CPU format")
+					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
+				},
+				Entry("invalid Min value", "invalid", "4000m"),
+				Entry("invalid Max value", "1000m", "invalid"),
 			)
 
 			// TC-U054: rejects invalid memory format
@@ -761,8 +783,8 @@ var _ = Describe("Container API Handlers", func() {
 			Entry("CreateContainer 400 has Type and Title",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					body := validCreateBody()
-					body.Resources.Cpu.Min = 4
-					body.Resources.Cpu.Max = 2
+					body.Resources.Cpu.Min = "4000m"
+					body.Resources.Cpu.Max = "2000m"
 					return s.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
 						Body: &v1alpha1.Container{Spec: body},
 					})

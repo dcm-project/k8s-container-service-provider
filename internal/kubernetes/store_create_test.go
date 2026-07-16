@@ -76,7 +76,7 @@ var _ = Describe("K8s Store", func() {
 		It("maps CPU resources to requests and limits (TC-I012)", func() {
 			s, client := newTestStore(defaultConfig())
 			c := minimalContainer("my-app")
-			c.Resources.Cpu = v1alpha1.ContainerCpu{Min: 1, Max: 2}
+			c.Resources.Cpu = v1alpha1.ContainerCpu{Min: "1000m", Max: "2000m"}
 
 			_, err := s.Create(context.Background(), c, "test-id-012")
 			Expect(err).NotTo(HaveOccurred())
