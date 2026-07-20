@@ -34,7 +34,7 @@ var _ = Describe("WriteResponse", func() {
 
 		var body map[string]any
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
-		Expect(body).To(HaveKeyWithValue("type", "INVALID_ARGUMENT"))
+		Expect(body).To(HaveKeyWithValue("type", "https://dcm.example.com/errors/invalid-argument"))
 		Expect(body).To(HaveKeyWithValue("title", "Bad Request"))
 		Expect(body["status"]).To(BeNumerically("==", 400))
 		Expect(body).To(HaveKeyWithValue("detail", "missing required field"))
@@ -52,7 +52,7 @@ var _ = Describe("WriteResponse", func() {
 
 		var body map[string]any
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
-		Expect(body).To(HaveKeyWithValue("type", "INTERNAL"))
+		Expect(body).To(HaveKeyWithValue("type", "https://dcm.example.com/errors/internal"))
 		Expect(body).To(HaveKeyWithValue("title", "Internal Server Error"))
 		Expect(body["status"]).To(BeNumerically("==", 500))
 		Expect(body).To(HaveKeyWithValue("detail", "an unexpected error occurred"))

@@ -606,12 +606,20 @@ components:
         type:
           type: string
           format: uri-reference
-          description: Error type code
+          description: URI reference identifying the error type
           enum:
-            - INVALID_ARGUMENT
-            - NOT_FOUND
-            - ALREADY_EXISTS
-            - PERMISSION_DENIED
+            - https://dcm.example.com/errors/invalid-argument
+            - https://dcm.example.com/errors/not-found
+            - https://dcm.example.com/errors/already-exists
+            - https://dcm.example.com/errors/permission-denied
+            - https://dcm.example.com/errors/unauthenticated
+            - https://dcm.example.com/errors/internal
+            - https://dcm.example.com/errors/unavailable
+          x-enum-varnames:
+            - INVALIDARGUMENT
+            - NOTFOUND
+            - ALREADYEXISTS
+            - PERMISSIONDENIED
             - UNAUTHENTICATED
             - INTERNAL
             - UNAVAILABLE
@@ -628,5 +636,5 @@ components:
         instance:
           type: string
           format: uri-reference
-          description: Unique identifier for this error occurrence
+          description: URI reference for this specific error occurrence
 

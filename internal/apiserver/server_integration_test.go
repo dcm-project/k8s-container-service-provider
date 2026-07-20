@@ -452,8 +452,8 @@ var _ = Describe("HTTP Server", func() {
 			Expect(json.Unmarshal(body, &problemJSON)).To(Succeed(),
 				"body should be valid JSON for: %s", description)
 			// Assert RFC 7807 field values, not just presence.
-			Expect(problemJSON).To(HaveKeyWithValue("type", "INVALID_ARGUMENT"),
-				"RFC 7807 'type' must be INVALID_ARGUMENT for: %s", description)
+			Expect(problemJSON).To(HaveKeyWithValue("type", "https://dcm.example.com/errors/invalid-argument"),
+				"RFC 7807 'type' must be a valid error URI for: %s", description)
 			Expect(problemJSON).To(HaveKeyWithValue("title", "Bad Request"),
 				"RFC 7807 'title' must be 'Bad Request' for: %s", description)
 			Expect(problemJSON["status"]).To(BeNumerically("==", 400),
@@ -529,7 +529,7 @@ var _ = Describe("HTTP Server", func() {
 		Expect(json.Unmarshal(body, &problemJSON)).To(Succeed())
 
 		// Full RFC 7807 payload validation.
-		Expect(problemJSON).To(HaveKeyWithValue("type", "INTERNAL"))
+		Expect(problemJSON).To(HaveKeyWithValue("type", "https://dcm.example.com/errors/internal"))
 		Expect(problemJSON["status"]).To(BeNumerically("==", 500))
 		Expect(problemJSON).To(HaveKeyWithValue("title", "Internal Server Error"))
 		Expect(problemJSON).To(HaveKeyWithValue("detail", "an unexpected error occurred"))
@@ -783,7 +783,7 @@ var _ = Describe("HTTP Server", func() {
 
 		var problemJSON map[string]any
 		Expect(json.Unmarshal(w.Body.Bytes(), &problemJSON)).To(Succeed())
-		Expect(problemJSON).To(HaveKeyWithValue("type", "INTERNAL"))
+		Expect(problemJSON).To(HaveKeyWithValue("type", "https://dcm.example.com/errors/internal"))
 		Expect(problemJSON).To(HaveKeyWithValue("title", "Internal Server Error"))
 		Expect(problemJSON["status"]).To(BeNumerically("==", 500))
 		Expect(problemJSON).To(HaveKeyWithValue("detail", "an unexpected error occurred"))
