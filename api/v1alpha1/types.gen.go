@@ -74,13 +74,13 @@ func (e ContainerStatus) Valid() bool {
 
 // Defines values for ErrorType.
 const (
-	ALREADYEXISTS    ErrorType = "ALREADY_EXISTS"
-	INTERNAL         ErrorType = "INTERNAL"
-	INVALIDARGUMENT  ErrorType = "INVALID_ARGUMENT"
-	NOTFOUND         ErrorType = "NOT_FOUND"
-	PERMISSIONDENIED ErrorType = "PERMISSION_DENIED"
-	UNAUTHENTICATED  ErrorType = "UNAUTHENTICATED"
-	UNAVAILABLE      ErrorType = "UNAVAILABLE"
+	ALREADYEXISTS    ErrorType = "https://dcm.example.com/errors/already-exists"
+	INTERNAL         ErrorType = "https://dcm.example.com/errors/internal"
+	INVALIDARGUMENT  ErrorType = "https://dcm.example.com/errors/invalid-argument"
+	NOTFOUND         ErrorType = "https://dcm.example.com/errors/not-found"
+	PERMISSIONDENIED ErrorType = "https://dcm.example.com/errors/permission-denied"
+	UNAUTHENTICATED  ErrorType = "https://dcm.example.com/errors/unauthenticated"
+	UNAVAILABLE      ErrorType = "https://dcm.example.com/errors/unavailable"
 )
 
 // Valid indicates whether the value is a known member of the ErrorType enum.
@@ -295,7 +295,7 @@ type Error struct {
 	// Detail Human-readable explanation specific to this occurrence
 	Detail *string `json:"detail,omitempty"`
 
-	// Instance Unique identifier for this error occurrence
+	// Instance URI reference for this specific error occurrence
 	Instance *string `json:"instance,omitempty"`
 
 	// Status HTTP status code
@@ -304,11 +304,11 @@ type Error struct {
 	// Title Short human-readable summary
 	Title string `json:"title"`
 
-	// Type Error type code
+	// Type URI reference identifying the error type
 	Type ErrorType `json:"type"`
 }
 
-// ErrorType Error type code
+// ErrorType URI reference identifying the error type
 type ErrorType string
 
 // Health Health status singleton resource

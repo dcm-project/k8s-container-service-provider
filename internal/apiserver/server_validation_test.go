@@ -123,7 +123,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 				"body should be valid JSON for: %s", description)
 			Expect(problemJSON).To(HaveKey("type"),
 				"RFC 7807 body must have 'type' for: %s", description)
-			Expect(problemJSON["type"]).To(Equal("INVALID_ARGUMENT"))
+			Expect(problemJSON["type"]).To(Equal(string(v1alpha1.INVALIDARGUMENT)))
 			Expect(problemJSON).To(HaveKey("title"),
 				"RFC 7807 body must have 'title' for: %s", description)
 			Expect(problemJSON).To(HaveKey("status"),
@@ -240,7 +240,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 
 			var problemJSON map[string]any
 			Expect(json.Unmarshal(respBody, &problemJSON)).To(Succeed())
-			Expect(problemJSON["type"]).To(Equal("INVALID_ARGUMENT"))
+			Expect(problemJSON["type"]).To(Equal(string(v1alpha1.INVALIDARGUMENT)))
 		},
 		Entry("leading dash", "-leading-dash", "ID starting with dash"),
 		Entry("trailing dash", "trailing-", "ID ending with dash"),
