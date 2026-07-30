@@ -47,15 +47,17 @@ func (h *Handler) CreateContainer(ctx context.Context, req oapigen.CreateContain
 	requestPath := containersBasePath
 
 	if err := validateContainerID(id); err != nil {
-		return newCreateError400(err.Error(), requestPath), nil
+		return newCreateError400(err.Detail, err.Pointer, requestPath), nil
 	}
 
-	if err := validateResources(spec.Resources); err != nil {
-		return newCreateError400(err.Error(), requestPath), nil
-	}
+	errs := validateResources(spec.Resources)
+	errs = append(errs, validateUserLabels(spec.Metadata.Labels)...)
 
-	if err := validateUserLabels(spec.Metadata.Labels); err != nil {
-		return newCreateError400(err.Error(), requestPath), nil
+	if len(errs) == 1 {
+		return newCreateError400(errs[0].Detail, errs[0].Pointer, requestPath), nil
+	}
+	if len(errs) >= 2 {
+		return newCreateMultiError400(errs, requestPath), nil
 	}
 
 	result, err := h.store.Create(ctx, spec, id)

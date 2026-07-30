@@ -86,4 +86,14 @@ check-container-engine:
 image-build: check-container-engine
 	$(CONTAINER_ENGINE) build -t $(CONTAINER_IMAGE_NAME):$(CONTAINER_IMAGE_TAG) .
 
-.PHONY: build run clean fmt vet test test-cover lint check tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep check-container-engine image-build
+check-problem-uris:
+	@output=$$(find api internal pkg cmd -type f \( -name '*.go' -o -name '*.yaml' \) \
+		-exec grep -n 'dcm\.example\.com' {} + 2>/dev/null) || true; \
+	if [ -n "$$output" ]; then \
+		printf '%s\n' "$$output"; \
+		echo "ERROR: Old problem type URIs found. Update to dcm-project.github.io/problems/*" >&2; \
+		exit 1; \
+	fi
+	@echo "Problem URIs OK"
+
+.PHONY: build run clean fmt vet test test-cover lint check tidy generate-types generate-spec generate-server generate-client generate-api check-generate-api check-aep check-container-engine image-build check-problem-uris

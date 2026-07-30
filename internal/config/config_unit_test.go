@@ -40,8 +40,8 @@ var _ = Describe("Configuration", func() {
 	// setRequiredEnv sets the mandatory env vars so Load() succeeds.
 	setRequiredEnv := func() {
 		_ = os.Setenv("SP_NAME", "test-sp")
-		_ = os.Setenv("SP_ENDPOINT", "https://test.example.com")
-		_ = os.Setenv("DCM_REGISTRATION_URL", "https://dcm.example.com")
+		_ = os.Setenv("SP_ENDPOINT", "http://sp")
+		_ = os.Setenv("DCM_REGISTRATION_URL", "http://dcm")
 		_ = os.Setenv("SP_NATS_URL", "nats://test:4222")
 		_ = os.Setenv("SP_K8S_EXTERNAL_SVC_TYPE", "LoadBalancer")
 	}
@@ -66,14 +66,14 @@ var _ = Describe("Configuration", func() {
 		Expect(cfg.Server.ShutdownTimeout).To(Equal(30 * time.Second))
 		Expect(cfg.Provider.Name).To(Equal("test-sp"))
 		Expect(cfg.Provider.DisplayName).To(Equal("Test Provider"))
-		Expect(cfg.Provider.Endpoint).To(Equal("https://test.example.com"))
+		Expect(cfg.Provider.Endpoint).To(Equal("http://sp"))
 		Expect(cfg.Server.ReadTimeout).To(Equal(10 * time.Second))
 		Expect(cfg.Server.WriteTimeout).To(Equal(20 * time.Second))
 		Expect(cfg.Server.IdleTimeout).To(Equal(120 * time.Second))
 		Expect(cfg.Server.RequestTimeout).To(Equal(45 * time.Second))
 		Expect(cfg.Provider.Region).To(Equal("us-east-1"))
 		Expect(cfg.Provider.Zone).To(Equal("us-east-1a"))
-		Expect(cfg.DCM.RegistrationURL).To(Equal("https://dcm.example.com"))
+		Expect(cfg.DCM.RegistrationURL).To(Equal("http://dcm"))
 	})
 
 	// TC-U004: Default values applied when no config specified

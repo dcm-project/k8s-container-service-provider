@@ -1,6 +1,7 @@
 package apiserver_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,7 @@ import (
 	"github.com/dcm-project/k8s-container-service-provider/internal/apiserver"
 	"github.com/dcm-project/k8s-container-service-provider/internal/config"
 	"github.com/dcm-project/k8s-container-service-provider/internal/handlers/container"
+	"github.com/dcm-project/k8s-container-service-provider/internal/httperror"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 )
 
@@ -70,7 +72,7 @@ func (a *abortOnListHandler) ListContainers(_ http.ResponseWriter, _ *http.Reque
 
 // headersThenPanicOnListHandler implements ServerInterface. It writes
 // a status header before panicking, so the recovery middleware cannot
-// safely write its own RFC 7807 response.
+// safely write its own RFC 9457 response.
 type headersThenPanicOnListHandler struct {
 	oapigen.Unimplemented
 }
@@ -423,8 +425,8 @@ var _ = Describe("HTTP Server", func() {
 		))
 	})
 
-	// TC-I008: Malformed requests return 400 with RFC 7807 body
-	DescribeTable("returns 400 with RFC 7807 body for malformed requests (TC-I008)",
+	// TC-I008: Malformed requests return 400 with RFC 9457 body
+	DescribeTable("returns 400 with RFC 9457 body for malformed requests (TC-I008)",
 		func(method, path string, description string) {
 			addr, cancel, errCh := startServer(defaultConfig(), nil, nil)
 			defer func() {
@@ -443,7 +445,7 @@ var _ = Describe("HTTP Server", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
 				"expected 400 for: %s", description)
 			Expect(resp.Header.Get("Content-Type")).To(Equal("application/problem+json"),
-				"expected RFC 7807 content type for: %s", description)
+				"expected RFC 9457 content type for: %s", description)
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -451,17 +453,17 @@ var _ = Describe("HTTP Server", func() {
 			var problemJSON map[string]any
 			Expect(json.Unmarshal(body, &problemJSON)).To(Succeed(),
 				"body should be valid JSON for: %s", description)
-			// Assert RFC 7807 field values, not just presence.
+			// Assert RFC 9457 field values, not just presence.
 			Expect(problemJSON).To(HaveKeyWithValue("type", string(v1alpha1.INVALIDARGUMENT)),
-				"RFC 7807 'type' must be a valid error URI for: %s", description)
-			Expect(problemJSON).To(HaveKeyWithValue("title", "Bad Request"),
-				"RFC 7807 'title' must be 'Bad Request' for: %s", description)
+				"RFC 9457 'type' must be a valid error URI for: %s", description)
+			Expect(problemJSON).To(HaveKeyWithValue("title", "Invalid argument"),
+				"RFC 9457 'title' must be 'Invalid argument' for: %s", description)
 			Expect(problemJSON["status"]).To(BeNumerically("==", 400),
-				"RFC 7807 'status' must be 400 for: %s", description)
+				"RFC 9457 'status' must be 400 for: %s", description)
 
 			// Assert detail exists and is human-friendly.
 			Expect(problemJSON).To(HaveKey("detail"),
-				"RFC 7807 body must have 'detail' for: %s", description)
+				"RFC 9457 body must have 'detail' for: %s", description)
 			detail, ok := problemJSON["detail"].(string)
 			Expect(ok).To(BeTrue(), "detail must be a string for: %s", description)
 			Expect(detail).NotTo(BeEmpty(),
@@ -481,8 +483,8 @@ var _ = Describe("HTTP Server", func() {
 		Entry("invalid container_id pattern", "GET", "/api/v1alpha1/containers/UPPERCASE_ID", "container_id with uppercase characters"),
 	)
 
-	// TC-I104: Panic recovery returns RFC 7807 JSON
-	It("returns RFC 7807 JSON on handler panic (TC-I104)", func() {
+	// TC-I104: Panic recovery returns RFC 9457 JSON
+	It("returns RFC 9457 JSON on handler panic (TC-I104)", func() {
 		// Use a custom handler that panics inside a route handler,
 		// ensuring the panic occurs within the chi middleware chain
 		// where the recovery middleware can catch it.
@@ -528,7 +530,7 @@ var _ = Describe("HTTP Server", func() {
 		var problemJSON map[string]any
 		Expect(json.Unmarshal(body, &problemJSON)).To(Succeed())
 
-		// Full RFC 7807 payload validation.
+		// Full RFC 9457 payload validation.
 		Expect(problemJSON).To(HaveKeyWithValue("type", string(v1alpha1.INTERNAL)))
 		Expect(problemJSON["status"]).To(BeNumerically("==", 500))
 		Expect(problemJSON).To(HaveKeyWithValue("title", "Internal Server Error"))
@@ -590,7 +592,7 @@ var _ = Describe("HTTP Server", func() {
 		Consistently(logBuf.String).WithTimeout(200 * time.Millisecond).WithPolling(50 * time.Millisecond).ShouldNot(ContainSubstring("panic recovered"))
 	})
 
-	// TC-I106: Headers-already-sent panic logs without writing RFC 7807
+	// TC-I106: Headers-already-sent panic logs without writing RFC 9457
 	It("logs headers-already-sent without overwriting the status (TC-I106)", func() {
 		var logBuf syncBuffer
 		h := &headersThenPanicOnListHandler{}
@@ -768,8 +770,8 @@ var _ = Describe("HTTP Server", func() {
 		Expect(serverErr).To(MatchError(context.DeadlineExceeded))
 	})
 
-	// TC-U070: ResponseErrorHandlerFunc returns RFC 7807
-	It("ResponseErrorHandlerFunc returns RFC 7807 INTERNAL response (TC-U070)", func() {
+	// TC-U070: ResponseErrorHandlerFunc returns RFC 9457
+	It("ResponseErrorHandlerFunc returns RFC 9457 INTERNAL response (TC-U070)", func() {
 		var logBuf syncBuffer
 		logger := slog.New(slog.NewJSONHandler(&logBuf, nil))
 		handler := apiserver.NewResponseErrorHandler(logger)
@@ -917,6 +919,74 @@ var _ = Describe("HTTP Server", func() {
 		Expect(healthJSON).To(HaveKey("path"))
 		Expect(healthJSON).To(HaveKey("version"))
 		Expect(healthJSON).To(HaveKey("uptime"))
+	})
+
+	// TC-I119: Wire-format multi-error response via HTTP
+	It("returns multi-error response with correct wire format (TC-I119)", func() {
+		repo := &mockContainerRepo{
+			CreateFunc: func(_ context.Context, _ v1alpha1.ContainerSpec, _ string) (*v1alpha1.Container, error) {
+				panic("store should not be called when validation fails")
+			},
+		}
+
+		addr, cancel, errCh := startServerWithRepo(defaultConfig(), nil, nil, repo)
+		defer func() {
+			cancel()
+			Eventually(errCh).WithTimeout(10 * time.Second).Should(Receive())
+		}()
+
+		body := v1alpha1.Container{
+			Spec: v1alpha1.ContainerSpec{
+				ServiceType: v1alpha1.ContainerSpecServiceTypeContainer,
+				Metadata:    v1alpha1.ContainerMetadata{Name: "test-multi-error", Labels: &map[string]string{"dcm.project/managed-by": "bad"}},
+				Image:       v1alpha1.ContainerImage{Reference: "nginx:latest"},
+				Resources: v1alpha1.ContainerResources{
+					Cpu:    v1alpha1.ContainerCpu{Min: 10, Max: 5},
+					Memory: v1alpha1.ContainerMemory{Min: "1GB", Max: "2GB"},
+				},
+			},
+		}
+		bodyBytes, jsonErr := json.Marshal(body)
+		Expect(jsonErr).NotTo(HaveOccurred())
+
+		resp, err := http.Post(
+			fmt.Sprintf("http://%s/api/v1alpha1/containers", addr),
+			"application/json",
+			io.NopCloser(bytes.NewReader(bodyBytes)),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = resp.Body.Close() }()
+
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(resp.Header.Get("Content-Type")).To(HavePrefix("application/problem+json"))
+
+		respBody, err := io.ReadAll(resp.Body)
+		Expect(err).NotTo(HaveOccurred())
+
+		var problemJSON map[string]any
+		Expect(json.Unmarshal(respBody, &problemJSON)).To(Succeed())
+
+		Expect(problemJSON["type"]).To(Equal(string(v1alpha1.INVALIDARGUMENT)))
+		Expect(problemJSON["title"]).To(Equal("Invalid argument"))
+		Expect(problemJSON).To(HaveKey("detail"))
+		Expect(problemJSON).To(HaveKey("instance"))
+		Expect(problemJSON).To(HaveKey("errors"))
+
+		errorsArr, ok := problemJSON["errors"].([]any)
+		Expect(ok).To(BeTrue(), "errors should be an array")
+		Expect(errorsArr).To(HaveLen(2))
+
+		firstError, ok := errorsArr[0].(map[string]any)
+		Expect(ok).To(BeTrue())
+		Expect(problemJSON["detail"]).To(Equal(httperror.InvalidArgumentMultiDetail))
+
+		Expect(firstError).To(HaveKey("pointer"))
+		Expect(firstError["pointer"]).To(Equal("#/spec/resources/cpu/min"))
+
+		secondError, ok := errorsArr[1].(map[string]any)
+		Expect(ok).To(BeTrue())
+		Expect(secondError).To(HaveKey("pointer"))
+		Expect(secondError["pointer"]).To(Equal("#/spec/metadata/labels/dcm.project~1managed-by"))
 	})
 
 	// TC-I097: Request logging — error request (404)

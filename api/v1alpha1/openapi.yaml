@@ -4,7 +4,7 @@ info:
   description: |
     DCM service provider for managing containers in Kubernetes clusters.
     This API follows AEP standards for consistency across DCM services.
-  version: 1.0.0
+  version: 1.1.0
   contact:
     name: DCM Project
     url: https://github.com/dcm-project/k8s-container-service-provider
@@ -598,7 +598,22 @@ components:
 
     Error:
       type: object
-      description: RFC 7807 compliant error response
+      description: |
+        RFC 9457 compliant error response (Problem Details for HTTP APIs).
+
+        Defined problem types:
+        | Type URI | Title | HTTP Status |
+        |----------|-------|-------------|
+        | .../problems/invalid-argument | Invalid argument | 400 |
+        | .../problems/not-found | Not found | 404 |
+        | .../problems/already-exists | Already exists | 409 |
+        | .../problems/permission-denied | Permission denied | 403 |
+        | .../problems/unauthenticated | Unauthenticated | 401 |
+        | .../problems/internal | Internal Server Error | 500 |
+        | .../problems/unavailable | Service unavailable | 503 |
+      externalDocs:
+        description: "RFC 9457: Problem Details for HTTP APIs"
+        url: https://datatracker.ietf.org/doc/html/rfc9457
       required:
         - type
         - title
@@ -608,13 +623,13 @@ components:
           format: uri-reference
           description: URI reference identifying the error type
           enum:
-            - https://dcm.example.com/errors/invalid-argument
-            - https://dcm.example.com/errors/not-found
-            - https://dcm.example.com/errors/already-exists
-            - https://dcm.example.com/errors/permission-denied
-            - https://dcm.example.com/errors/unauthenticated
-            - https://dcm.example.com/errors/internal
-            - https://dcm.example.com/errors/unavailable
+            - https://dcm-project.github.io/problems/invalid-argument
+            - https://dcm-project.github.io/problems/not-found
+            - https://dcm-project.github.io/problems/already-exists
+            - https://dcm-project.github.io/problems/permission-denied
+            - https://dcm-project.github.io/problems/unauthenticated
+            - https://dcm-project.github.io/problems/internal
+            - https://dcm-project.github.io/problems/unavailable
           x-enum-varnames:
             - INVALIDARGUMENT
             - NOTFOUND
@@ -630,6 +645,8 @@ components:
           type: integer
           format: int32
           description: HTTP status code
+          minimum: 100
+          maximum: 599
         detail:
           type: string
           description: Human-readable explanation specific to this occurrence
@@ -637,4 +654,40 @@ components:
           type: string
           format: uri-reference
           description: URI reference for this specific error occurrence
+        pointer:
+          type: string
+          format: json-pointer
+          description: >
+            JSON Pointer fragment identifier (RFC 6901 §6) locating the request
+            body field that caused this error, e.g. "#/spec/resources/cpu/min".
+            Absent when the error cannot be attributed to a single request body
+            field or is not a validation error.
+        errors:
+          type: array
+          description: |
+            Present only when two or more same-type validation errors occur.
+            Each entry describes one validation failure. Never empty, never
+            single-entry. Top-level detail equals the first entry for backward
+            compatibility.
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      description: Individual validation error within a multi-error response
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable explanation of this specific validation error
+        pointer:
+          type: string
+          format: json-pointer
+          description: >
+            JSON Pointer fragment identifier (RFC 6901 §6) locating the request
+            body field that caused this error, e.g. "#/spec/resources/cpu/min".
+            Absent when the error cannot be attributed to a single request body
+            field.
 

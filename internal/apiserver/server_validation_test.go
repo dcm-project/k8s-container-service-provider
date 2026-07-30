@@ -113,7 +113,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
 				"expected 400 for: %s", description)
 			Expect(resp.Header.Get("Content-Type")).To(Equal("application/problem+json"),
-				"expected RFC 7807 content type for: %s", description)
+				"expected RFC 9457 content type for: %s", description)
 
 			body, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
@@ -122,12 +122,12 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			Expect(json.Unmarshal(body, &problemJSON)).To(Succeed(),
 				"body should be valid JSON for: %s", description)
 			Expect(problemJSON).To(HaveKey("type"),
-				"RFC 7807 body must have 'type' for: %s", description)
+				"RFC 9457 body must have 'type' for: %s", description)
 			Expect(problemJSON["type"]).To(Equal(string(v1alpha1.INVALIDARGUMENT)))
 			Expect(problemJSON).To(HaveKey("title"),
-				"RFC 7807 body must have 'title' for: %s", description)
+				"RFC 9457 body must have 'title' for: %s", description)
 			Expect(problemJSON).To(HaveKey("status"),
-				"RFC 7807 body must have 'status' for: %s", description)
+				"RFC 9457 body must have 'status' for: %s", description)
 		},
 
 		// Missing spec wrapper
@@ -233,7 +233,7 @@ var _ = Describe("Container API Handlers - Request Validation", func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusBadRequest),
 				"expected 400 for: %s", description)
 			Expect(resp.Header.Get("Content-Type")).To(Equal("application/problem+json"),
-				"expected RFC 7807 content type for: %s", description)
+				"expected RFC 9457 content type for: %s", description)
 
 			respBody, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
