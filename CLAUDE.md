@@ -56,7 +56,7 @@ Base path: `/api/v1alpha1/containers`
 | `GET` | `/api/v1alpha1/containers/{container_id}` | Get container by ID. |
 | `DELETE` | `/api/v1alpha1/containers/{container_id}` | Delete container. Returns 204 No Content. |
 
-All error responses use RFC 9457 Problem Details with types: `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. When handler-level validation detects multiple errors, they are returned in an `errors` extension array with the top-level `detail` set to the first error for backward compatibility.
+All error responses use RFC 9457 Problem Details with types: `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. When handler-level validation detects multiple errors, they are returned in an `errors` extension array with a generic top-level `detail` summary.
 
 ## Architecture
 
@@ -102,7 +102,7 @@ Generated files (do not edit manually):
 
 - **Strict server interface**: oapi-codegen generates a `StrictServerInterface` with typed request/response objects. Handlers implement this interface — no manual HTTP parsing.
 - **Repository pattern**: `internal/store/repository.go` defines `ContainerRepository`. The Kubernetes implementation in `internal/kubernetes/` maps containers to Deployments. Custom error types (`NotFoundError`, `ConflictError`, `InvalidArgumentError`) in `internal/store/errors.go` drive HTTP status code mapping in handlers.
-- **RFC 9457 errors**: All error responses use Problem Details format with types like `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. CreateContainer handler validation collects multiple errors into an `errors` extension array (present only when 2+ errors exist; top-level `detail` mirrors the first entry for backward compatibility).
+- **RFC 9457 errors**: All error responses use Problem Details format with types like `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. CreateContainer handler validation collects multiple errors into an `errors` extension array (present only when 2+ errors exist; top-level `detail` is a generic summary message).
 - **Handler validation**: `internal/handlers/container/validation.go` validates business rules (CPU/memory min<=max, reserved label keys, container ID format per AEP-122).
 - **Config**: Environment variables are parsed via `caarlos0/env` into structs in `internal/config/`. Prefixes: `SP_*` (provider identity), `SP_SERVER_*`, `SP_K8S_*`, `SP_NATS_*`, `SP_MONITOR_*`, `DCM_*` (registry).
 - **Status monitoring**: `internal/monitoring/` watches K8s resources via shared informers, reconciles Deployment+Pod state into a single status, debounces rapid changes, and publishes CloudEvents v1.0 (`type: dcm.status.container`) to NATS subject `dcm.container`.

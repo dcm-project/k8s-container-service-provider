@@ -2,53 +2,103 @@ package container
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	"github.com/dcm-project/k8s-container-service-provider/internal/dcm"
 	"github.com/dcm-project/k8s-container-service-provider/internal/units"
 )
 
-// reservedContainerIDs contains container IDs that cannot be used because
-// they would collide with fixed API paths under /api/v1alpha1/containers/.
-var reservedContainerIDs = map[string]bool{
-	"health": true,
+// validationError holds a validation failure detail and an optional JSON Pointer
+// (RFC 6901 §6 fragment) identifying the offending request body field.
+// Pointer is empty when the error cannot be attributed to a single body field.
+type validationError struct {
+	Detail  string
+	Pointer string
 }
 
-func validateContainerID(id string) error {
-	if reservedContainerIDs[id] {
-		return fmt.Errorf("container ID %q is reserved and cannot be used", id)
-	}
-	return nil
+const (
+	ptrContainerID = "#/spec/id"
+	ptrCPUMin      = "#/spec/resources/cpu/min"
+	ptrCPUMax      = "#/spec/resources/cpu/max"
+	ptrMemMin      = "#/spec/resources/memory/min"
+	ptrMemMax      = "#/spec/resources/memory/max"
+)
+
+func jsonPointerEscape(s string) string {
+	s = strings.ReplaceAll(s, "~", "~0")
+	s = strings.ReplaceAll(s, "/", "~1")
+	return s
 }
 
-func validateResources(res v1alpha1.ContainerResources) error {
-	if res.Cpu.Min > res.Cpu.Max {
-		return fmt.Errorf("cpu.min (%d) must not exceed cpu.max (%d)", res.Cpu.Min, res.Cpu.Max)
-	}
-
-	minMem, err := units.ConvertMemory(res.Memory.Min)
-	if err != nil {
-		return fmt.Errorf("invalid memory.min %q: %w", res.Memory.Min, err)
-	}
-	maxMem, err := units.ConvertMemory(res.Memory.Max)
-	if err != nil {
-		return fmt.Errorf("invalid memory.max %q: %w", res.Memory.Max, err)
-	}
-	if minMem.Cmp(maxMem) > 0 {
-		return fmt.Errorf("memory.min (%s) must not exceed memory.max (%s)", res.Memory.Min, res.Memory.Max)
-	}
-
-	return nil
+func labelPointer(key string) string {
+	return "#/spec/metadata/labels/" + jsonPointerEscape(key)
 }
 
-func validateUserLabels(labels *map[string]string) error {
-	if labels == nil {
-		return nil
-	}
-	for k := range *labels {
-		if dcm.ReservedLabelKeys[k] {
-			return fmt.Errorf("label %q is reserved by DCM and cannot be set by the user", k)
+func validateContainerID(id string) *validationError {
+	if id == "health" {
+		return &validationError{
+			Detail:  fmt.Sprintf("container ID %q is reserved and cannot be used", id),
+			Pointer: ptrContainerID,
 		}
 	}
 	return nil
+}
+
+func validateResources(res v1alpha1.ContainerResources) []validationError {
+	var errs []validationError
+
+	if res.Cpu.Min > res.Cpu.Max {
+		errs = append(errs, validationError{
+			Detail:  fmt.Sprintf("cpu.min (%d) must not exceed cpu.max (%d)", res.Cpu.Min, res.Cpu.Max),
+			Pointer: ptrCPUMin,
+		})
+	}
+
+	minMem, minErr := units.ConvertMemory(res.Memory.Min)
+	if minErr != nil {
+		errs = append(errs, validationError{
+			Detail:  fmt.Sprintf("invalid memory.min %q: %v", res.Memory.Min, minErr),
+			Pointer: ptrMemMin,
+		})
+	}
+	maxMem, maxErr := units.ConvertMemory(res.Memory.Max)
+	if maxErr != nil {
+		errs = append(errs, validationError{
+			Detail:  fmt.Sprintf("invalid memory.max %q: %v", res.Memory.Max, maxErr),
+			Pointer: ptrMemMax,
+		})
+	}
+	if minErr == nil && maxErr == nil && minMem.Cmp(maxMem) > 0 {
+		errs = append(errs, validationError{
+			Detail:  fmt.Sprintf("memory.min (%s) must not exceed memory.max (%s)", res.Memory.Min, res.Memory.Max),
+			Pointer: ptrMemMin,
+		})
+	}
+
+	return errs
+}
+
+func validateUserLabels(labels *map[string]string) []validationError {
+	if labels == nil {
+		return nil
+	}
+
+	keys := make([]string, 0, len(dcm.ReservedLabelKeys))
+	for k := range dcm.ReservedLabelKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var errs []validationError
+	for _, k := range keys {
+		if _, ok := (*labels)[k]; ok {
+			errs = append(errs, validationError{
+				Detail:  fmt.Sprintf("label %q is reserved by DCM and cannot be set by the user", k),
+				Pointer: labelPointer(k),
+			})
+		}
+	}
+	return errs
 }

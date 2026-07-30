@@ -74,13 +74,13 @@ func (e ContainerStatus) Valid() bool {
 
 // Defines values for ErrorType.
 const (
-	ALREADYEXISTS    ErrorType = "https://dcm.example.com/errors/already-exists"
-	INTERNAL         ErrorType = "https://dcm.example.com/errors/internal"
-	INVALIDARGUMENT  ErrorType = "https://dcm.example.com/errors/invalid-argument"
-	NOTFOUND         ErrorType = "https://dcm.example.com/errors/not-found"
-	PERMISSIONDENIED ErrorType = "https://dcm.example.com/errors/permission-denied"
-	UNAUTHENTICATED  ErrorType = "https://dcm.example.com/errors/unauthenticated"
-	UNAVAILABLE      ErrorType = "https://dcm.example.com/errors/unavailable"
+	ALREADYEXISTS    ErrorType = "https://dcm-project.github.io/problems/already-exists"
+	INTERNAL         ErrorType = "https://dcm-project.github.io/problems/internal"
+	INVALIDARGUMENT  ErrorType = "https://dcm-project.github.io/problems/invalid-argument"
+	NOTFOUND         ErrorType = "https://dcm-project.github.io/problems/not-found"
+	PERMISSIONDENIED ErrorType = "https://dcm-project.github.io/problems/permission-denied"
+	UNAUTHENTICATED  ErrorType = "https://dcm-project.github.io/problems/unauthenticated"
+	UNAVAILABLE      ErrorType = "https://dcm-project.github.io/problems/unavailable"
 )
 
 // Valid indicates whether the value is a known member of the ErrorType enum.
@@ -290,13 +290,33 @@ type ContainerSpecServiceType string
 // ContainerStatus Current status of the container instance
 type ContainerStatus string
 
-// Error RFC 7807 compliant error response
+// Error RFC 9457 compliant error response (Problem Details for HTTP APIs).
+//
+// Defined problem types:
+// | Type URI | Title | HTTP Status |
+// |----------|-------|-------------|
+// | .../problems/invalid-argument | Invalid argument | 400 |
+// | .../problems/not-found | Not found | 404 |
+// | .../problems/already-exists | Already exists | 409 |
+// | .../problems/permission-denied | Permission denied | 403 |
+// | .../problems/unauthenticated | Unauthenticated | 401 |
+// | .../problems/internal | Internal Server Error | 500 |
+// | .../problems/unavailable | Service unavailable | 503 |
 type Error struct {
 	// Detail Human-readable explanation specific to this occurrence
 	Detail *string `json:"detail,omitempty"`
 
+	// Errors Present only when two or more same-type validation errors occur.
+	// Each entry describes one validation failure. Never empty, never
+	// single-entry. Top-level detail equals the first entry for backward
+	// compatibility.
+	Errors *[]ErrorDetail `json:"errors,omitempty"`
+
 	// Instance URI reference for this specific error occurrence
 	Instance *string `json:"instance,omitempty"`
+
+	// Pointer JSON Pointer fragment identifier (RFC 6901 §6) locating the request body field that caused this error, e.g. "#/spec/resources/cpu/min". Absent when the error cannot be attributed to a single request body field or is not a validation error.
+	Pointer *string `json:"pointer,omitempty"`
 
 	// Status HTTP status code
 	Status *int32 `json:"status,omitempty"`
@@ -310,6 +330,15 @@ type Error struct {
 
 // ErrorType URI reference identifying the error type
 type ErrorType string
+
+// ErrorDetail Individual validation error within a multi-error response
+type ErrorDetail struct {
+	// Detail Human-readable explanation of this specific validation error
+	Detail string `json:"detail"`
+
+	// Pointer JSON Pointer fragment identifier (RFC 6901 §6) locating the request body field that caused this error, e.g. "#/spec/resources/cpu/min". Absent when the error cannot be attributed to a single request body field.
+	Pointer *string `json:"pointer,omitempty"`
+}
 
 // Health Health status singleton resource
 type Health struct {

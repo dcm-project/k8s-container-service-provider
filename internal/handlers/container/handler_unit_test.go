@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"time"
 
 	v1alpha1 "github.com/dcm-project/k8s-container-service-provider/api/v1alpha1"
 	oapigen "github.com/dcm-project/k8s-container-service-provider/internal/api/server"
 	"github.com/dcm-project/k8s-container-service-provider/internal/handlers/container"
+	"github.com/dcm-project/k8s-container-service-provider/internal/httperror"
 	"github.com/dcm-project/k8s-container-service-provider/internal/store"
 	"github.com/dcm-project/k8s-container-service-provider/internal/util"
 
@@ -397,6 +399,240 @@ var _ = Describe("Container API Handlers", func() {
 				Entry("dcm.project/dcm-service-type", "dcm.project/dcm-service-type"),
 			)
 		})
+
+		Context("Multi-error validation (RFC 9457)", func() {
+			// TC-U092: CreateContainer returns multiple cross-validator errors
+			It("returns errors array when both resource and label errors exist (TC-U092)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+				body.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "bad"}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Errors).To(HaveLen(2))
+				Expect((*errResp.Errors)[0].Detail).To(ContainSubstring("cpu.min"))
+				Expect((*errResp.Errors)[0].Pointer).To(HaveValue(Equal("#/spec/resources/cpu/min")))
+				Expect((*errResp.Errors)[1].Detail).To(ContainSubstring("dcm.project/managed-by"))
+				Expect((*errResp.Errors)[1].Pointer).To(HaveValue(Equal("#/spec/metadata/labels/dcm.project~1managed-by")))
+			})
+
+			// TC-U093: single validation error uses existing format (no errors array)
+			It("returns single-error format when only one validation error exists (TC-U093)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
+				Expect(*errResp.Detail).To(ContainSubstring("cpu.min"))
+				Expect(errResp.Errors).To(BeNil())
+				Expect(errResp.Pointer).To(HaveValue(Equal("#/spec/resources/cpu/min")))
+			})
+
+			// TC-U094: multi-error response uses generic top-level detail
+			It("sets top-level detail to a generic message (TC-U094)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+				body.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "bad"}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Detail).To(Equal(httperror.InvalidArgumentMultiDetail))
+			})
+
+			// TC-U095: multiple intra-resource errors (CPU + memory)
+			It("returns errors array with intra-resource errors (TC-U095)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+				body.Resources.Memory.Min = "4GB"
+				body.Resources.Memory.Max = "2GB"
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Errors).To(HaveLen(2))
+				Expect((*errResp.Errors)[0].Detail).To(ContainSubstring("cpu.min"))
+				Expect((*errResp.Errors)[0].Pointer).To(HaveValue(Equal("#/spec/resources/cpu/min")))
+				Expect((*errResp.Errors)[1].Detail).To(ContainSubstring("memory.min"))
+				Expect((*errResp.Errors)[1].Pointer).To(HaveValue(Equal("#/spec/resources/memory/min")))
+			})
+
+			// TC-U096: multiple reserved label errors in deterministic order
+			It("returns errors array with reserved labels in deterministic order (TC-U096)", func() {
+				body := validCreateBody()
+				body.Metadata.Labels = &map[string]string{
+					"dcm.project/managed-by":      "bad",
+					"dcm.project/dcm-instance-id": "bad",
+				}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Errors).To(HaveLen(2))
+				Expect((*errResp.Errors)[0].Detail).To(ContainSubstring("dcm.project/dcm-instance-id"))
+				Expect((*errResp.Errors)[0].Pointer).To(HaveValue(Equal("#/spec/metadata/labels/dcm.project~1dcm-instance-id")))
+				Expect((*errResp.Errors)[1].Detail).To(ContainSubstring("dcm.project/managed-by"))
+				Expect((*errResp.Errors)[1].Pointer).To(HaveValue(Equal("#/spec/metadata/labels/dcm.project~1managed-by")))
+			})
+
+			// TC-U097: store not called when validation fails
+			It("does not call store when validation errors exist (TC-U097)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+				body.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "bad"}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				_, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response, store should not have been called")
+			})
+
+			// TC-U098: store InvalidArgumentError remains single-error path
+			It("returns single-error format for store InvalidArgumentError (TC-U098)", func() {
+				repo.CreateFunc = func(_ context.Context, _ v1alpha1.ContainerSpec, _ string) (*v1alpha1.Container, error) {
+					return nil, &store.InvalidArgumentError{Message: "duplicate port"}
+				}
+
+				body := validCreateBody()
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).To(BeNil())
+				Expect(errResp.Pointer).To(BeNil())
+			})
+
+			// TC-U099: >2 aggregated errors (CPU + memory + label)
+			It("returns errors array with >2 entries when all validators fail (TC-U099)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+				body.Resources.Memory.Min = "4GB"
+				body.Resources.Memory.Max = "2GB"
+				body.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "bad"}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Errors).To(HaveLen(3))
+				Expect((*errResp.Errors)[0].Detail).To(ContainSubstring("cpu.min"))
+				Expect((*errResp.Errors)[0].Pointer).To(HaveValue(Equal("#/spec/resources/cpu/min")))
+				Expect((*errResp.Errors)[1].Detail).To(ContainSubstring("memory.min"))
+				Expect((*errResp.Errors)[1].Pointer).To(HaveValue(Equal("#/spec/resources/memory/min")))
+				Expect((*errResp.Errors)[2].Detail).To(ContainSubstring("dcm.project/managed-by"))
+				Expect((*errResp.Errors)[2].Pointer).To(HaveValue(Equal("#/spec/metadata/labels/dcm.project~1managed-by")))
+			})
+
+			// TC-U100: label pointer escapes special characters
+			It("escapes / in label keys to ~1 in pointer (TC-U100)", func() {
+				body := validCreateBody()
+				body.Metadata.Labels = &map[string]string{"dcm.project/managed-by": "bad"}
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Pointer).To(HaveValue(Equal("#/spec/metadata/labels/dcm.project~1managed-by")))
+			})
+
+			// TC-U101: cross-field error pointer targets the asserted offender
+			It("points to cpu.min for cpu.min > cpu.max constraint (TC-U101)", func() {
+				body := validCreateBody()
+				body.Resources.Cpu.Min = 10
+				body.Resources.Cpu.Max = 5
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Pointer).To(HaveValue(Equal("#/spec/resources/cpu/min")))
+			})
+
+			// TC-U102: single validation error includes top-level pointer
+			It("includes top-level pointer for single validation error (TC-U102)", func() {
+				body := validCreateBody()
+				body.Resources.Memory.Min = "4GB"
+				body.Resources.Memory.Max = "2GB"
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).To(BeNil())
+				Expect(errResp.Pointer).To(HaveValue(Equal("#/spec/resources/memory/min")))
+			})
+
+			// TC-U103: dual memory format errors produce distinct pointers
+			It("returns distinct pointers for memory.min and memory.max format errors (TC-U103)", func() {
+				body := validCreateBody()
+				body.Resources.Memory.Min = "10XB"
+				body.Resources.Memory.Max = "5XB"
+
+				resp, err := h.CreateContainer(context.Background(), oapigen.CreateContainerRequestObject{
+					Body: &v1alpha1.Container{Spec: body},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				errResp, ok := resp.(oapigen.CreateContainer400ApplicationProblemPlusJSONResponse)
+				Expect(ok).To(BeTrue(), "expected 400 response")
+				Expect(errResp.Errors).NotTo(BeNil())
+				Expect(*errResp.Errors).To(HaveLen(2))
+				Expect((*errResp.Errors)[0].Pointer).To(HaveValue(Equal("#/spec/resources/memory/min")))
+				Expect((*errResp.Errors)[1].Pointer).To(HaveValue(Equal("#/spec/resources/memory/max")))
+			})
+		})
 	})
 
 	// -----------------------------------------------------------------------
@@ -697,8 +933,8 @@ var _ = Describe("Container API Handlers", func() {
 	// Error handling
 	// -----------------------------------------------------------------------
 	Describe("Error handling", func() {
-		// TC-U022: error responses use RFC 7807 format
-		DescribeTable("error responses use RFC 7807 format (TC-U022)",
+		// TC-U022: error responses use RFC 9457 format
+		DescribeTable("error responses use RFC 9457 format (TC-U022)",
 			func(
 				callHandler func(oapigen.StrictServerInterface) (interface{}, error),
 				assertError func(interface{}),
@@ -709,7 +945,7 @@ var _ = Describe("Container API Handlers", func() {
 			},
 
 			// 404 from GetContainer
-			Entry("GetContainer 404 has Type and Title",
+			Entry("GetContainer 404 has Type, Title and Status",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					repo.GetFunc = func(_ context.Context, id string) (*v1alpha1.Container, error) {
 						return nil, &store.NotFoundError{ID: id}
@@ -721,11 +957,13 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(ok).To(BeTrue())
 					Expect(errResp.Type).To(Equal(v1alpha1.NOTFOUND))
 					Expect(errResp.Title).NotTo(BeEmpty())
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusNotFound)))
 				},
 			),
 
 			// 409 from CreateContainer
-			Entry("CreateContainer 409 has Type and Title",
+			Entry("CreateContainer 409 has Type, Title and Status",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					body := validCreateBody()
 					repo.CreateFunc = func(_ context.Context, _ v1alpha1.ContainerSpec, _ string) (*v1alpha1.Container, error) {
@@ -738,11 +976,13 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(ok).To(BeTrue())
 					Expect(errResp.Type).To(Equal(v1alpha1.ALREADYEXISTS))
 					Expect(errResp.Title).NotTo(BeEmpty())
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusConflict)))
 				},
 			),
 
 			// 404 from DeleteContainer
-			Entry("DeleteContainer 404 has Type and Title",
+			Entry("DeleteContainer 404 has Type, Title and Status",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					repo.DeleteFunc = func(_ context.Context, id string) error {
 						return &store.NotFoundError{ID: id}
@@ -754,11 +994,13 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(ok).To(BeTrue())
 					Expect(errResp.Type).To(Equal(v1alpha1.NOTFOUND))
 					Expect(errResp.Title).NotTo(BeEmpty())
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusNotFound)))
 				},
 			),
 
 			// 400 from CreateContainer (cpu min > max)
-			Entry("CreateContainer 400 has Type and Title",
+			Entry("CreateContainer 400 has Type, Title and Status",
 				func(s oapigen.StrictServerInterface) (interface{}, error) {
 					body := validCreateBody()
 					body.Resources.Cpu.Min = 4
@@ -772,6 +1014,28 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(ok).To(BeTrue())
 					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
 					Expect(errResp.Title).NotTo(BeEmpty())
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusBadRequest)))
+				},
+			),
+
+			// 400 from ListContainers (invalid page token)
+			Entry("ListContainers 400 has Type, Title and Status",
+				func(s oapigen.StrictServerInterface) (interface{}, error) {
+					repo.ListFunc = func(_ context.Context, _ int32, _ string) (*v1alpha1.ContainerList, error) {
+						return nil, &store.InvalidArgumentError{Message: "bad token"}
+					}
+					return s.ListContainers(context.Background(), oapigen.ListContainersRequestObject{
+						Params: v1alpha1.ListContainersParams{PageToken: util.Ptr("bad")},
+					})
+				},
+				func(resp interface{}) {
+					errResp, ok := resp.(oapigen.ListContainers400ApplicationProblemPlusJSONResponse)
+					Expect(ok).To(BeTrue())
+					Expect(errResp.Type).To(Equal(v1alpha1.INVALIDARGUMENT))
+					Expect(errResp.Title).NotTo(BeEmpty())
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusBadRequest)))
 				},
 			),
 		)
@@ -912,6 +1176,8 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(errResp.Type).To(Equal(v1alpha1.INTERNAL))
 					Expect(*errResp.Detail).To(Equal("an unexpected error occurred"))
 					Expect(*errResp.Detail).NotTo(ContainSubstring("database connection lost"))
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusInternalServerError)))
 				},
 			),
 
@@ -930,6 +1196,8 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(errResp.Type).To(Equal(v1alpha1.INTERNAL))
 					Expect(*errResp.Detail).To(Equal("an unexpected error occurred"))
 					Expect(*errResp.Detail).NotTo(ContainSubstring("connection refused"))
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusInternalServerError)))
 				},
 			),
 
@@ -948,6 +1216,8 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(errResp.Type).To(Equal(v1alpha1.INTERNAL))
 					Expect(*errResp.Detail).To(Equal("an unexpected error occurred"))
 					Expect(*errResp.Detail).NotTo(ContainSubstring("disk I/O error"))
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusInternalServerError)))
 				},
 			),
 
@@ -966,6 +1236,8 @@ var _ = Describe("Container API Handlers", func() {
 					Expect(errResp.Type).To(Equal(v1alpha1.INTERNAL))
 					Expect(*errResp.Detail).To(Equal("an unexpected error occurred"))
 					Expect(*errResp.Detail).NotTo(ContainSubstring("network timeout"))
+					Expect(errResp.Status).NotTo(BeNil())
+					Expect(*errResp.Status).To(Equal(int32(http.StatusInternalServerError)))
 				},
 			),
 		)

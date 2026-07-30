@@ -32,24 +32,24 @@ type Server struct {
 }
 
 // newBadRequestHandler returns a handler that writes a 400 Bad Request
-// response with an RFC 7807 application/problem+json body. It is used
+// response with an RFC 9457 application/problem+json body. It is used
 // by the parameter binding layer (generated chi wrapper) and OpenAPI
 // validation middleware.
 func newBadRequestHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, r *http.Request, err error) {
 		detail := scrubValidationError(err)
-		httperror.WriteResponse(w, logger, http.StatusBadRequest, v1alpha1.INVALIDARGUMENT, "Bad Request", detail, requestInstance(r))
+		httperror.WriteResponse(w, logger, http.StatusBadRequest, v1alpha1.INVALIDARGUMENT, httperror.InvalidArgumentTitle, detail, requestInstance(r))
 	}
 }
 
 // NewRequestErrorHandler returns an error handler for the strict adapter's
-// RequestErrorHandlerFunc that writes an RFC 7807 INVALID_ARGUMENT response.
+// RequestErrorHandlerFunc that writes an RFC 9457 INVALID_ARGUMENT response.
 func NewRequestErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
 	return newBadRequestHandler(logger)
 }
 
 // NewResponseErrorHandler returns an error handler for the strict adapter's
-// ResponseErrorHandlerFunc that writes an RFC 7807 INTERNAL response without
+// ResponseErrorHandlerFunc that writes an RFC 9457 INTERNAL response without
 // exposing implementation details.
 func NewResponseErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
 	return func(w http.ResponseWriter, r *http.Request, err error) {
@@ -59,7 +59,7 @@ func NewResponseErrorHandler(logger *slog.Logger) func(http.ResponseWriter, *htt
 }
 
 // requestInstance returns a pointer to the request URI (path + query string)
-// for use as the RFC 7807 instance field. Returns nil if the request is nil.
+// for use as the RFC 9457 instance field. Returns nil if the request is nil.
 func requestInstance(r *http.Request) *string {
 	if r == nil {
 		return nil
@@ -195,7 +195,7 @@ func (w *statusRecordingResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
-// recoveryMiddleware catches panics and returns an RFC 7807
+// recoveryMiddleware catches panics and returns an RFC 9457
 // application/problem+json response instead of a plain-text stack trace.
 //
 // Special cases:
@@ -218,7 +218,7 @@ func recoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 					logger.Error("panic recovered", "panic", rec, "stack", string(debug.Stack()))
 
 					if sw.wroteHeader {
-						logger.Warn("headers already sent, cannot write RFC 7807 response")
+						logger.Warn("headers already sent, cannot write RFC 9457 response")
 						return
 					}
 
@@ -325,7 +325,7 @@ func New(cfg *config.Config, logger *slog.Logger, handler oapigen.ServerInterfac
 	// generated router sees them. Chi treats /containers/ as a distinct
 	// path from /containers/{container_id}, so without this route it would 404.
 	emptyIDHandler := func(w http.ResponseWriter, r *http.Request) {
-		httperror.WriteResponse(w, logger, http.StatusBadRequest, v1alpha1.INVALIDARGUMENT, "Bad Request", "container_id is required and cannot be empty", requestInstance(r))
+		httperror.WriteResponse(w, logger, http.StatusBadRequest, v1alpha1.INVALIDARGUMENT, httperror.InvalidArgumentTitle, "container_id is required and cannot be empty", requestInstance(r))
 	}
 	postPath, pathErr := v1alpha1.PostPath()
 	if pathErr != nil {
