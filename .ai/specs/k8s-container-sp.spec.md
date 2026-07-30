@@ -123,10 +123,10 @@ authentication/authorization middleware, rate limiting.
 | REQ-HTTP-040 | The SP MUST initiate graceful shutdown on SIGINT, behaving identically to REQ-HTTP-030 | MUST | |
 | REQ-HTTP-050 | The SP MUST load configuration values from environment variables | MUST | |
 | REQ-HTTP-060 | The SP MUST log each HTTP request at INFO level including method, path, response status code, and duration | MUST | |
-| REQ-HTTP-070 | The SP MUST catch panics in HTTP handlers and return an RFC 7807 INTERNAL error response. Panics that signal intentional connection abort MUST be re-raised. If the response has already started streaming, the panic MUST be logged without writing a response body. Recovery middleware MUST be applied as the outermost middleware layer to ensure panics in any middleware are caught | MUST | |
+| REQ-HTTP-070 | The SP MUST catch panics in HTTP handlers and return an RFC 9457 INTERNAL error response. Panics that signal intentional connection abort MUST be re-raised. If the response has already started streaming, the panic MUST be logged without writing a response body. Recovery middleware MUST be applied as the outermost middleware layer to ensure panics in any middleware are caught | MUST | |
 | REQ-HTTP-080 | The SP MUST log server lifecycle events including listen address on startup | MUST | |
-| REQ-HTTP-090 | The SP MUST return 400 Bad Request with RFC 7807 error body for malformed requests | MUST | |
-| REQ-HTTP-091 | The API framework layer MUST return RFC 7807 error responses for request parsing and response serialization failures, not plain text | MUST | |
+| REQ-HTTP-090 | The SP MUST return 400 Bad Request with RFC 9457 error body for malformed requests | MUST | |
+| REQ-HTTP-091 | The API framework layer MUST return RFC 9457 error responses for request parsing and response serialization failures, not plain text | MUST | |
 | REQ-HTTP-110 | The SP SHOULD enforce a configurable per-request timeout, cancelling the request context after the deadline | SHOULD | |
 
 #### Configuration Introduced
@@ -195,7 +195,7 @@ authentication/authorization middleware, rate limiting.
 - **Validates:** REQ-HTTP-070
 - **Given** a handler panics during request processing
 - **When** the panic is caught
-- **Then** the response MUST be HTTP 500 with RFC 7807 body (type=INTERNAL)
+- **Then** the response MUST be HTTP 500 with RFC 9457 body (type=INTERNAL)
 - **And** the panic and stack trace MUST be logged at ERROR level
 - **And** panics that signal intentional connection abort MUST be re-raised
 - **And** if the response has already started streaming, a warning MUST be logged without writing a response body
@@ -205,14 +205,14 @@ authentication/authorization middleware, rate limiting.
 - **Validates:** REQ-HTTP-090
 - **Given** a request with invalid parameters (e.g., malformed query params)
 - **When** the request reaches the router
-- **Then** the SP MUST return a 400 Bad Request with an RFC 7807 error body
+- **Then** the SP MUST return a 400 Bad Request with an RFC 9457 error body
 
 ##### AC-HTTP-091: Framework-layer error responses
 
 - **Validates:** REQ-HTTP-091
 - **Given** the API framework layer encounters a request parsing or response serialization failure
 - **When** an error response is generated
-- **Then** the error response MUST be RFC 7807 with `Content-Type: application/problem+json`
+- **Then** the error response MUST be RFC 9457 with `Content-Type: application/problem+json`
 - **And** INTERNAL errors MUST NOT expose implementation details
 
 ##### AC-HTTP-110: Request timeout
@@ -321,7 +321,7 @@ Depends on Topic 1 (HTTP Server).
 
 Implement all API operations defined in the OpenAPI specification. Wire each
 endpoint to the container storage interface. Handle request validation,
-response construction, and error mapping to RFC 7807 responses.
+response construction, and error mapping to RFC 9457 responses.
 
 Out of scope: authentication/authorization (401/403 responses), request body
 size limits.
@@ -343,11 +343,11 @@ size limits.
 | REQ-API-110 | GET MUST support `max_page_size` and `page_token` query parameters for pagination | MUST | |
 | REQ-API-120 | GET MUST return 200 OK with an empty `containers` array when no containers exist | MUST | |
 | REQ-API-130 | GET `/api/v1alpha1/containers/{containerId}` MUST return the container with 200 OK | MUST | |
-| REQ-API-140 | GET MUST return 404 Not Found with RFC 7807 error body when the container does not exist | MUST | |
+| REQ-API-140 | GET MUST return 404 Not Found with RFC 9457 error body when the container does not exist | MUST | |
 | REQ-API-150 | DELETE `/api/v1alpha1/containers/{containerId}` MUST return 204 No Content | MUST | |
 | REQ-API-151 | A GET request for a deleted container MUST return 404 Not Found | MUST | |
-| REQ-API-160 | DELETE MUST return 404 Not Found with RFC 7807 error body when the container does not exist | MUST | |
-| REQ-API-170 | All error responses MUST conform to RFC 7807 with `Content-Type: application/problem+json` and at minimum `type` and `title` fields | MUST | |
+| REQ-API-160 | DELETE MUST return 404 Not Found with RFC 9457 error body when the container does not exist | MUST | |
+| REQ-API-170 | All error responses MUST conform to RFC 9457 with `Content-Type: application/problem+json` and at minimum `type` and `title` fields | MUST | |
 | REQ-API-180 | Error types MUST map to appropriate HTTP status codes per the error mapping table | MUST | |
 | REQ-API-200 | The POST `/api/v1alpha1/containers` request body MUST be a JSON object with a required `spec` property containing the Container input fields (CreateContainerRequest wrapper). The response remains a bare Container | MUST | D1 |
 | REQ-API-210 | The Container schema MUST include an optional `provider_hints` field (type: object, additionalProperties: true). The SP MUST accept it on input but MUST NOT act on hint content | MUST | D3, DD-080 |
@@ -394,7 +394,7 @@ size limits.
 - **Validates:** REQ-API-050
 - **Given** POST `/api/v1alpha1/containers?id=INVALID_ID` is called
 - **When** the ID does not match pattern `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
-- **Then** the response MUST be 400 Bad Request with an RFC 7807 error body
+- **Then** the response MUST be 400 Bad Request with an RFC 9457 error body
 
 ##### AC-API-050: Create container - initial status
 
@@ -421,7 +421,7 @@ size limits.
 - **Validates:** REQ-API-080
 - **Given** a container with id "existing-id" already exists
 - **When** POST is called with `?id=existing-id`
-- **Then** the response MUST be 409 Conflict with an RFC 7807 error body
+- **Then** the response MUST be 409 Conflict with an RFC 9457 error body
 - **And** the existing resource MUST NOT be modified
 
 ##### AC-API-080: Create container - validation
@@ -429,7 +429,7 @@ size limits.
 - **Validates:** REQ-API-090
 - **Given** a request body missing required fields (e.g., no `image`)
 - **When** POST is called
-- **Then** the response MUST be 400 Bad Request with an RFC 7807 error body
+- **Then** the response MUST be 400 Bad Request with an RFC 9457 error body
 
 ##### AC-API-090: List containers - success
 
@@ -466,7 +466,7 @@ size limits.
 - **Validates:** REQ-API-140
 - **Given** no container with id "xyz-999" exists
 - **When** GET `/api/v1alpha1/containers/xyz-999` is called
-- **Then** the response MUST be 404 Not Found with an RFC 7807 error body
+- **Then** the response MUST be 404 Not Found with an RFC 9457 error body
 
 ##### AC-API-140: Delete container - success
 
@@ -481,7 +481,7 @@ size limits.
 - **Validates:** REQ-API-160
 - **Given** no container with id "xyz-999" exists
 - **When** DELETE `/api/v1alpha1/containers/xyz-999` is called
-- **Then** the response MUST be 404 Not Found with an RFC 7807 error body
+- **Then** the response MUST be 404 Not Found with an RFC 9457 error body
 
 ##### AC-API-160: Error response format
 
@@ -1381,19 +1381,23 @@ Depends on Topic 1 (HTTP Server).
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| REQ-XC-ERR-010 | All HTTP error responses MUST conform to RFC 7807 (Problem Details for HTTP APIs) using the Error schema defined in the OpenAPI spec | MUST | |
+| REQ-XC-ERR-010 | All HTTP error responses MUST conform to RFC 9457 (Problem Details for HTTP APIs) using the Error schema defined in the OpenAPI spec | MUST | |
 | REQ-XC-ERR-020 | Error responses MUST set `Content-Type: application/problem+json` | MUST | |
 | REQ-XC-ERR-030 | Error responses SHOULD include `detail` and `instance` fields. The `instance` field SHOULD be the request URI | SHOULD | |
 | REQ-XC-ERR-040 | Error responses for INTERNAL errors MUST NOT expose implementation details such as stack traces, panic messages, raw dependency error strings, file paths, or memory addresses | MUST | |
+| REQ-XC-ERR-050 | When handler-level validation detects multiple independent errors of the same type, the response MUST include an `errors` extension array where each entry contains a `detail` field describing one error | MUST | |
+| REQ-XC-ERR-055 | In a multi-error validation response, the top-level `detail` field MUST contain a generic summary message (not a copy of any individual error) | MUST | |
+| REQ-XC-ERR-060 | When only a single validation error is detected, the response MUST use the existing single-error format (top-level `detail` only) and MUST NOT include the `errors` array. The `errors` array MUST only be present when there are two or more validation errors | MUST | |
+| REQ-XC-ERR-070 | When a handler-level validation error is associated with a specific request body field, the error SHOULD include a `pointer` field containing a JSON Pointer fragment identifier (RFC 6901 §6) rooted at the request body (e.g., `#/spec/resources/cpu/min`). For multi-error responses, each entry in the `errors` array carries its own `pointer`. For single-error responses, the top-level `Error` object carries the `pointer`. The `pointer` field MUST be absent when the error cannot be attributed to a single request body field (e.g., query parameter errors, store-level errors). The convention for cross-field constraints (e.g., min > max) is to point to the field whose value is asserted as exceeding the constraint. Label keys containing `/` or `~` MUST be escaped per RFC 6901 (`~` → `~0`, `/` → `~1`). This requirement applies only to handler-level validation; OpenAPI middleware validation errors are out of scope | SHOULD | See RFC 9457 §3 validation error example |
 
 #### Acceptance Criteria
 
-##### AC-XC-ERR-010: RFC 7807 compliance
+##### AC-XC-ERR-010: RFC 9457 compliance
 
 - **Validates:** REQ-XC-ERR-010
 - **Given** any error condition in the API
 - **When** an error response is returned
-- **Then** the body MUST conform to the RFC 7807 Error schema with at minimum `type` and `title` fields
+- **Then** the body MUST conform to the RFC 9457 Error schema with at minimum `type` and `title` fields
 
 ##### AC-XC-ERR-020: Error content type
 
@@ -1416,6 +1420,43 @@ Depends on Topic 1 (HTTP Server).
 - **When** the error response is returned
 - **Then** the detail field MUST contain a generic message
 - **And** the response MUST NOT contain stack traces, file paths, memory addresses, or raw internal error messages
+
+##### AC-XC-ERR-050: Multi-error validation errors array
+
+- **Validates:** REQ-XC-ERR-050
+- **Given** a CreateContainer request with two or more independent validation failures (e.g., CPU min>max AND a reserved DCM label)
+- **When** the handler validates the request
+- **Then** the response MUST be HTTP 400 with `type` = `INVALIDARGUMENT`
+- **And** the body MUST contain an `errors` array with one entry per validation failure
+- **And** the `errors` array MUST have at least 2 entries
+
+##### AC-XC-ERR-055: Multi-error generic top-level detail
+
+- **Validates:** REQ-XC-ERR-055
+- **Given** a CreateContainer request with two or more independent validation failures
+- **When** the handler validates the request
+- **Then** the top-level `detail` MUST be a generic summary message (not a copy of any individual error)
+
+##### AC-XC-ERR-060: Single-error validation response
+
+- **Validates:** REQ-XC-ERR-060
+- **Given** a CreateContainer request with exactly one validation failure
+- **When** the handler validates the request
+- **Then** the response MUST be HTTP 400 with `type` = `INVALIDARGUMENT`
+- **And** the body MUST contain top-level `detail` with the error message
+- **And** the body MUST NOT contain an `errors` array
+
+##### AC-XC-ERR-070: Validation error field pointer
+
+- **Validates:** REQ-XC-ERR-070
+- **Given** a CreateContainer request with one or more handler-level validation failures attributable to specific request body fields
+- **When** the handler returns validation error(s)
+- **Then** each error SHOULD include a `pointer` field containing a valid JSON Pointer fragment identifier (RFC 6901 §6) rooted at the request body (e.g., `#/spec/resources/cpu/min`)
+- **And** for multi-error responses, each entry in the `errors` array MUST carry its own `pointer`
+- **And** for single-error responses (per REQ-XC-ERR-060), the top-level `Error` object MUST carry the `pointer`
+- **And** the `pointer` MUST be absent (null/omitted) when the error cannot be attributed to a single request body field
+- **And** label keys containing `/` or `~` MUST be correctly escaped per RFC 6901 (`~` → `~0`, `/` → `~1`)
+- **And** for cross-field constraints (e.g., cpu.min > cpu.max), the pointer MUST target the field whose value is asserted as exceeding the constraint (e.g., `#/spec/resources/cpu/min`)
 
 ### 5.4 Logging
 
@@ -1751,7 +1792,7 @@ is created when there are no ports.
 **Related requirements:** REQ-STR-050, REQ-API-100
 
 When a `page_token` that cannot be decoded or is otherwise invalid is provided
-to a List operation, the SP MUST return 400 Bad Request with an RFC 7807 error
+to a List operation, the SP MUST return 400 Bad Request with an RFC 9457 error
 body.
 
 ### SC-007: Deployment `Available=True` with no Pod
@@ -1778,7 +1819,7 @@ conditions (unless ReplicaFailure=True or Replicas=0, which map to FAILED).
 | REQ-REG-NNN | 4.6: DCM Registration | 9 |
 | REQ-XC-ID-NNN | 5.1: Resource Identity | 2 |
 | REQ-XC-LBL-NNN | 5.2: Resource Labeling | 1 |
-| REQ-XC-ERR-NNN | 5.3: Error Handling | 4 |
+| REQ-XC-ERR-NNN | 5.3: Error Handling | 5 |
 | REQ-XC-LOG-NNN | 5.4: Logging | 2 |
 | REQ-XC-CFG-NNN | 5.5: Configuration Management | 2 |
-| **Total** | | **117** |
+| **Total** | | **118** |

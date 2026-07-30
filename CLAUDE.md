@@ -28,7 +28,7 @@ make build              # Build binary to bin/k8s-container-service-provider
 make test               # Run all tests (Ginkgo v2, race detector)
 make test-cover         # Run tests with coverage (creates coverprofile.out)
 make lint               # Run golangci-lint
-make check              # fmt + vet + lint + test
+make check              # fmt + vet + lint + test + check-problem-uris
 make generate-api       # Regenerate all code from OpenAPI spec
 make check-generate-api # Verify generated code is up to date (CI check)
 make check-aep          # Validate OpenAPI spec against AEP standards (requires spectral)
@@ -56,7 +56,7 @@ Base path: `/api/v1alpha1/containers`
 | `GET` | `/api/v1alpha1/containers/{container_id}` | Get container by ID. |
 | `DELETE` | `/api/v1alpha1/containers/{container_id}` | Delete container. Returns 204 No Content. |
 
-All error responses use RFC 7807 Problem Details with types: `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`.
+All error responses use RFC 9457 Problem Details with types: `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. When handler-level validation detects multiple errors, they are returned in an `errors` extension array with the top-level `detail` set to the first error for backward compatibility.
 
 ## Architecture
 
@@ -87,7 +87,7 @@ Generated files (do not edit manually):
 | `internal/registration/` | `Registrar` — async self-registration with DCM Service Provider Manager using exponential backoff (1s initial, 60s max) |
 | `internal/dcm/` | DCM label constants (`dcm.project/managed-by`, `dcm.project/dcm-instance-id`, `dcm.project/dcm-service-type`) and label selectors |
 | `internal/units/` | CPU/memory unit conversions (API units MB/GB/TB to K8s units Mi/Gi/Ti and back) |
-| `internal/httperror/` | RFC 7807 `application/problem+json` response writing |
+| `internal/httperror/` | RFC 9457 `application/problem+json` response writing |
 | `internal/util/` | Generic helpers (e.g., `Ptr[T]`) |
 | `internal/api/server/` | **Generated** — Chi router and `StrictServerInterface` |
 
@@ -102,7 +102,7 @@ Generated files (do not edit manually):
 
 - **Strict server interface**: oapi-codegen generates a `StrictServerInterface` with typed request/response objects. Handlers implement this interface — no manual HTTP parsing.
 - **Repository pattern**: `internal/store/repository.go` defines `ContainerRepository`. The Kubernetes implementation in `internal/kubernetes/` maps containers to Deployments. Custom error types (`NotFoundError`, `ConflictError`, `InvalidArgumentError`) in `internal/store/errors.go` drive HTTP status code mapping in handlers.
-- **RFC 7807 errors**: All error responses use Problem Details format with types like `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`.
+- **RFC 9457 errors**: All error responses use Problem Details format with types like `INVALIDARGUMENT`, `NOTFOUND`, `ALREADYEXISTS`, `INTERNAL`. CreateContainer handler validation collects multiple errors into an `errors` extension array (present only when 2+ errors exist; top-level `detail` mirrors the first entry for backward compatibility).
 - **Handler validation**: `internal/handlers/container/validation.go` validates business rules (CPU/memory min<=max, reserved label keys, container ID format per AEP-122).
 - **Config**: Environment variables are parsed via `caarlos0/env` into structs in `internal/config/`. Prefixes: `SP_*` (provider identity), `SP_SERVER_*`, `SP_K8S_*`, `SP_NATS_*`, `SP_MONITOR_*`, `DCM_*` (registry).
 - **Status monitoring**: `internal/monitoring/` watches K8s resources via shared informers, reconciles Deployment+Pod state into a single status, debounces rapid changes, and publishes CloudEvents v1.0 (`type: dcm.status.container`) to NATS subject `dcm.container`.

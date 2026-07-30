@@ -168,7 +168,7 @@ construction, debounce, indexer functions, registration payload builders) are
   - `"trailing-"` (ends with dash)
   - `"has_underscore"` (underscore)
   - `"a"` + 63 chars (exceeds 63 character limit)
-- **Then:** Each returns HTTP `400` with an RFC 7807 error body containing type `INVALID_ARGUMENT`
+- **Then:** Each returns HTTP `400` with an RFC 9457 error body containing type `INVALID_ARGUMENT`
 
 ### TC-U013: CreateContainer returns 409 when a container with the same id already exists
 
@@ -178,7 +178,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Transitively covers:** TC-U026 (Conflict error is distinguishable — mock repository returns a typed conflict error that the handler maps to 409)
 - **Given:** Mock repository returns a conflict error indicating a duplicate `dcm.project/dcm-instance-id` (simulating a pre-existing container with the same `id`)
 - **When:** `POST /api/v1alpha1/containers` is called
-- **Then:** HTTP status is `409` AND body is RFC 7807 error with type `ALREADY_EXISTS`
+- **Then:** HTTP status is `409` AND body is RFC 9457 error with type `ALREADY_EXISTS`
 
 ### TC-U014: CreateContainer validates request body
 
@@ -203,7 +203,7 @@ construction, debounce, indexer functions, registration payload builders) are
   - Invalid memory format (e.g., `"10XB"`) (TC-U054)
   - CPU value below minimum (e.g., `cpu.min=0`) (TC-U055)
   - Port out of range (e.g., `containerPort=99999`) (TC-U056)
-- **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
+- **Then:** Each returns HTTP `400` with RFC 9457 error body containing type `INVALID_ARGUMENT`
 
 ### TC-U015: ListContainers returns 200 with containers
 
@@ -249,7 +249,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Transitively covers:** TC-U025 (Not-found error is distinguishable — mock repository returns a typed not-found error that the handler maps to 404)
 - **Given:** Mock repository returns a not-found error for id `"xyz-999"`
 - **When:** `GET /api/v1alpha1/containers/xyz-999` is called
-- **Then:** HTTP status is `404` AND body is RFC 7807 error with type `NOT_FOUND`
+- **Then:** HTTP status is `404` AND body is RFC 9457 error with type `NOT_FOUND`
 
 ### TC-U020: DeleteContainer returns 204 for existing container
 
@@ -268,16 +268,16 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Transitively covers:** TC-U025 (Not-found error is distinguishable)
 - **Given:** Mock repository returns a not-found error for id `"xyz-999"`
 - **When:** `DELETE /api/v1alpha1/containers/xyz-999` is called
-- **Then:** HTTP status is `404` AND body is RFC 7807 error with type `NOT_FOUND`
+- **Then:** HTTP status is `404` AND body is RFC 9457 error with type `NOT_FOUND`
 
-### TC-U022: Error responses use RFC 7807 format
+### TC-U022: Error responses use RFC 9457 format
 
 - **Requirement:** REQ-API-170
 - **Priority:** High
 - **Type:** Unit (table-driven across error scenarios)
 - **Given:** Any error condition (not found, conflict, validation failure, internal error)
 - **When:** The error response is returned
-- **Then:** `Content-Type` is `application/problem+json` AND body contains at minimum `type` and `title` fields
+- **Then:** `Content-Type` is `application/problem+json` AND body contains at minimum `type` and `title` fields and `status` field is set to the correct HTTP status code
 
 ### TC-U023: Error types map to correct HTTP status codes
 
@@ -303,7 +303,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit
 - **Given:** Mock repository returns a conflict error when the provided `id` matches an existing container's `dcm.project/dcm-instance-id`
 - **When:** `POST /api/v1alpha1/containers?id=existing-id` is called
-- **Then:** HTTP status is `409` AND body is RFC 7807 error with type `ALREADY_EXISTS`
+- **Then:** HTTP status is `409` AND body is RFC 9457 error with type `ALREADY_EXISTS`
 
 ### TC-U047: CreateContainer accepts valid boundary IDs
 
@@ -328,7 +328,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **When:** `POST` is called for each:
   - `resources.cpu.min=4`, `resources.cpu.max=2` (CPU min > max)
   - `resources.memory.min="4GB"`, `resources.memory.max="2GB"` (memory min > max)
-- **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
+- **Then:** Each returns HTTP `400` with RFC 9457 error body containing type `INVALID_ARGUMENT`
 
 ### TC-U049: CreateContainer rejects metadata.labels colliding with DCM labels
 
@@ -340,7 +340,7 @@ construction, debounce, indexer functions, registration payload builders) are
   - `metadata.labels: {"dcm.project/managed-by": "custom"}`
   - `metadata.labels: {"dcm.project/dcm-instance-id": "custom-id"}`
   - `metadata.labels: {"dcm.project/dcm-service-type": "custom-type"}`
-- **Then:** Each returns HTTP `400` with RFC 7807 error body containing type `INVALID_ARGUMENT`
+- **Then:** Each returns HTTP `400` with RFC 9457 error body containing type `INVALID_ARGUMENT`
 
 ### TC-U078: CreateContainer rejects reserved "health" container ID
 
@@ -350,7 +350,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit
 - **Given:** A valid container request body
 - **When:** `POST /api/v1alpha1/containers?id=health` is called
-- **Then:** HTTP status is `400` AND body is RFC 7807 error with type `INVALID_ARGUMENT` AND detail mentions the ID is reserved
+- **Then:** HTTP status is `400` AND body is RFC 9457 error with type `INVALID_ARGUMENT` AND detail mentions the ID is reserved
 
 ### TC-U079: CreateContainer accepts spec-wrapped body
 
@@ -370,7 +370,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit
 - **Given:** POST body is a raw Container without `spec` wrapper
 - **When:** OpenAPI validation middleware processes the request
-- **Then:** HTTP status is `400` with RFC 7807 error containing type `INVALID_ARGUMENT`
+- **Then:** HTTP status is `400` with RFC 9457 error containing type `INVALID_ARGUMENT`
 - **Referenced by:** TC-U014 (server_validation_test.go)
 
 ### TC-U081: CreateContainer accepts provider_hints
@@ -440,7 +440,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit
 - **Given:** Mock repository returns an invalid-argument error for an undecodable `page_token`
 - **When:** `GET /api/v1alpha1/containers?page_token=not-a-valid-token` is called
-- **Then:** HTTP status is `400` AND body is RFC 7807 error with type `INVALID_ARGUMENT`
+- **Then:** HTTP status is `400` AND body is RFC 9457 error with type `INVALID_ARGUMENT`
 
 ### TC-U051: Handler returns 500 INTERNAL for unexpected store errors
 
@@ -449,9 +449,9 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Type:** Unit
 - **Given:** Mock repository returns a generic (non-typed) error from any operation
 - **When:** The handler processes the response
-- **Then:** HTTP status is `500` AND body is RFC 7807 error with type `INTERNAL`
+- **Then:** HTTP status is `500` AND body is RFC 9457 error with type `INTERNAL`
 
-### TC-U070: ResponseErrorHandlerFunc returns RFC 7807
+### TC-U070: ResponseErrorHandlerFunc returns RFC 9457
 
 - **Requirement:** REQ-HTTP-091
 - **Priority:** High
@@ -459,7 +459,7 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Given:** The strict handler adapter's `ResponseErrorHandlerFunc` is configured
 - **When:** It is invoked with an error
 - **Then:** The response MUST be HTTP 500 with `Content-Type: application/problem+json`
-- **And** the body MUST be RFC 7807 with type `INTERNAL`
+- **And** the body MUST be RFC 9457 with type `INTERNAL`
 - **And** the body MUST NOT contain the raw error message
 
 ### TC-U071: Handler error responses include instance field
@@ -470,6 +470,139 @@ construction, debounce, indexer functions, registration payload builders) are
 - **Given:** A handler error occurs (mapCreateError, mapGetError, mapDeleteError, mapListError)
 - **When:** The error response is returned
 - **Then:** The `instance` field MUST be set to the request path
+
+### TC-U092: CreateContainer returns multiple cross-validator errors
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with CPU min>max AND a reserved DCM label
+- **When:** The handler validates the request
+- **Then:** The response MUST be HTTP 400 with `type` = `INVALIDARGUMENT`
+- **And** the body MUST contain an `errors` array with one entry per validation failure and each entry's `detail` field contains the expected error substring
+- **And** each entry's `pointer` field MUST contain the correct JSON Pointer (e.g., `#/spec/resources/cpu/min` and `#/spec/metadata/labels/dcm.project~1managed-by`)
+
+### TC-U093: CreateContainer single validation error uses existing format
+
+- **Requirement:** REQ-XC-ERR-060, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-060, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with exactly one validation failure (e.g., CPU min>max only)
+- **When:** The handler validates the request
+- **Then:** The response MUST be HTTP 400 with `type` = `INVALIDARGUMENT`
+- **And** the body MUST contain top-level `detail` with the error message
+- **And** the body MUST NOT contain an `errors` array
+- **And** the top-level `pointer` field MUST contain the correct JSON Pointer (e.g., `#/spec/resources/cpu/min`)
+
+### TC-U094: Multi-error response uses generic top-level detail
+
+- **Requirement:** REQ-XC-ERR-055
+- **Acceptance Criteria:** AC-XC-ERR-055
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with two or more validation failures
+- **When:** The handler validates the request
+- **Then** the top-level `detail` MUST be a generic summary message (not a copy of any individual error)
+
+### TC-U095: CreateContainer returns multiple intra-resource errors
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with CPU min>max AND memory min>max
+- **When:** The handler validates the request
+- **Then** the `errors` array MUST have 2 entries
+- **And** the first entry's `pointer` MUST be `#/spec/resources/cpu/min`
+- **And** the second entry's `pointer` MUST be `#/spec/resources/memory/min`
+
+### TC-U096: CreateContainer returns multiple reserved label errors
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with two reserved DCM labels
+- **When:** The handler validates the request
+- **Then** the `errors` array MUST have 2 entries in deterministic (lexicographic) order
+- **And** each entry's `pointer` field MUST contain the correctly-escaped label path (e.g., `#/spec/metadata/labels/dcm.project~1dcm-instance-id`)
+
+### TC-U097: Store not called when handler validation fails
+
+- **Requirement:** REQ-XC-ERR-050
+- **Acceptance Criteria:** AC-XC-ERR-050
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with multiple validation failures
+- **When:** The handler validates the request
+- **Then** `store.Create` MUST NOT be invoked
+
+### TC-U098: Store InvalidArgumentError remains single-error path
+
+- **Requirement:** REQ-XC-ERR-060
+- **Acceptance Criteria:** AC-XC-ERR-060
+- **Priority:** Medium
+- **Type:** Unit
+- **Given:** A CreateContainer request that passes handler validation
+- **When** the store returns an `InvalidArgumentError`
+- **Then** the response MUST NOT contain an `errors` array
+
+### TC-U099: CreateContainer returns >2 aggregated errors
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with CPU min>max AND memory min>max AND a reserved label
+- **When:** The handler validates the request
+- **Then** the `errors` array MUST have 3 entries (no truncation)
+- **And** each entry MUST have a `pointer` field with the correct JSON Pointer for the respective field
+
+### TC-U100: Validation error pointer escapes special characters in label keys
+
+- **Requirement:** REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with a reserved label whose key contains `/` (e.g., `dcm.project/managed-by`)
+- **When:** The handler validates the request
+- **Then:** The `pointer` for that error MUST be correctly escaped per RFC 6901 (e.g., `#/spec/metadata/labels/dcm.project~1managed-by`)
+
+### TC-U101: Cross-field error pointer targets the asserted offender
+
+- **Requirement:** REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request where cpu.min (10) > cpu.max (5)
+- **When:** The handler validates the request
+- **Then:** The `pointer` for this error MUST be `#/spec/resources/cpu/min` (the field whose value exceeds the constraint)
+
+### TC-U102: Single validation error includes top-level pointer
+
+- **Requirement:** REQ-XC-ERR-060, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-060, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with exactly one validation failure (e.g., CPU min>max only)
+- **When:** The handler validates the request
+- **Then:** The response MUST be HTTP 400 with `type` = `INVALIDARGUMENT`
+- **And** the body MUST NOT contain an `errors` array
+- **And** the top-level `pointer` field MUST be `#/spec/resources/cpu/min`
+
+### TC-U103: Dual memory format errors produce distinct pointers
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-070
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-070
+- **Priority:** High
+- **Type:** Unit
+- **Given:** A CreateContainer request with both memory.min AND memory.max in invalid format (e.g., `"10XB"` and `"5XB"`)
+- **When:** The handler validates the request
+- **Then** the `errors` array MUST have 2 entries
+- **And** the first entry's `pointer` MUST be `#/spec/resources/memory/min`
+- **And** the second entry's `pointer` MUST be `#/spec/resources/memory/max`
 
 ### TC-U073: scrubValidationError handles RequiredParamError
 
@@ -1064,6 +1197,9 @@ dedicated test class or `Describe` block.
 | REQ-XC-ERR-020| TC-U022                           | Covered |
 | REQ-XC-ERR-030| TC-U071                           | Covered |
 | REQ-XC-ERR-040| TC-U051, TC-I104 (integration)    | Covered |
+| REQ-XC-ERR-050| TC-U092, TC-U095, TC-U096, TC-U097, TC-U099, TC-I119 (integration) | Covered |
+| REQ-XC-ERR-055| TC-U094, TC-I119 (integration) | Covered |
+| REQ-XC-ERR-060| TC-U093, TC-U098                  | Covered |
 | REQ-REG-070   | TC-U061                           | Covered |
 | REQ-XC-CFG-010| TC-U002, TC-U004, TC-U063         | Covered |
 | REQ-XC-CFG-020| TC-U063                           | Covered |

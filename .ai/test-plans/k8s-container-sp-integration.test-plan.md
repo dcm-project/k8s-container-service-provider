@@ -96,7 +96,7 @@ for full descriptions.
 - **When:** Shutdown is initiated
 - **Then:** A structured log entry indicates shutdown has begun
 
-### TC-I008: Malformed requests return 400 with RFC 7807 body
+### TC-I008: Malformed requests return 400 with RFC 9457 body
 
 - **Requirement:** REQ-HTTP-090
 - **Priority:** High
@@ -109,7 +109,7 @@ for full descriptions.
   - `max_page_size=-1` (negative) (TC-U057)
   - `max_page_size=1001` (above maximum) (TC-U057)
   - `GET /api/v1alpha1/containers/` with empty containerId (TC-U058)
-- **Then:** Each response is `400` AND body is RFC 7807 error with `Content-Type: application/problem+json`
+- **Then:** Each response is `400` AND body is RFC 9457 error with `Content-Type: application/problem+json`
 
 ### TC-I082: Startup-notification callback failure does not crash the server
 
@@ -195,7 +195,7 @@ for full descriptions.
 - **When:** `GET /api/v1alpha1/containers/health` is called
 - **Then:** The response MUST be HTTP 200 AND `status` is `"unhealthy"` AND all other fields (`type`, `path`, `version`, `uptime`) are still present
 
-### TC-I104: Panic recovery returns RFC 7807 JSON
+### TC-I104: Panic recovery returns RFC 9457 JSON
 
 - **Requirement:** REQ-HTTP-070
 - **Priority:** High
@@ -203,6 +203,18 @@ for full descriptions.
 - **Given:** A handler that panics with a string value during request processing
 - **When:** The request is processed
 - **Then:** The response MUST be HTTP 500 with `Content-Type: application/problem+json` AND body contains `type=INTERNAL` AND no panic details leak to the client
+
+### TC-I119: Wire-format multi-error response via HTTP
+
+- **Requirement:** REQ-XC-ERR-050, REQ-XC-ERR-055
+- **Acceptance Criteria:** AC-XC-ERR-050, AC-XC-ERR-055
+- **Priority:** High
+- **Type:** Integration
+- **Given:** A full HTTP server with a stub repository, and a POST request with CPU min>max AND a reserved DCM label
+- **When:** The request is sent
+- **Then:** The response MUST be HTTP 400 with `Content-Type: application/problem+json`
+- **And** the JSON body MUST contain `type`, `title` = `"Invalid argument"`, `detail`, `errors[]` array, and `instance`
+- **And** the top-level `detail` MUST be a generic summary message (not a copy of any individual error)
 
 ### TC-I105: http.ErrAbortHandler is re-panicked
 
@@ -1305,6 +1317,8 @@ for full descriptions.
 | REQ-XC-LBL-010 | TC-I010, TC-I027, TC-I070           | Covered |
 | REQ-XC-ERR-010 | TC-I008                             | Covered |
 | REQ-XC-ERR-020 | TC-I008                             | Covered |
+| REQ-XC-ERR-050 | TC-I119                             | Covered |
+| REQ-XC-ERR-055 | TC-I119                             | Covered |
 | REQ-XC-LOG-010 | TC-I006, TC-I007                    | Covered |
 | REQ-XC-LOG-020 | TC-I006, TC-I007 (INFO), TC-I057 (ERROR) | Covered |
 

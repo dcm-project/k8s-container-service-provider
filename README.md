@@ -11,7 +11,7 @@ A [DCM](https://github.com/dcm-project) (Data Center Management) service provide
 - **Status monitoring** — watches Kubernetes resources and publishes status change events (PENDING, RUNNING, FAILED, UNKNOWN, DELETED) via NATS using [CloudEvents](https://cloudevents.io/) v1.0
 - **Auto-registration** — registers itself with the DCM control plane on startup, with exponential backoff retry (1s initial, 60s max)
 - **AEP-compliant API** — follows [API Enhancement Proposals](https://aep.dev/) standards; request validation is enforced via embedded OpenAPI spec
-- **RFC 7807 errors** — all error responses use the Problem Details format
+- **RFC 9457 errors** — all error responses use the Problem Details format, with multi-error support for validation failures
 
 ## Running with DCM
 
@@ -124,7 +124,9 @@ Response example:
 | `GET` | `/api/v1alpha1/containers/{container_id}` | Get a container by ID. |
 | `DELETE` | `/api/v1alpha1/containers/{container_id}` | Delete a container. Returns `204 No Content`. |
 
-All error responses use [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) Problem Details with types: `INVALID_ARGUMENT`, `NOT_FOUND`, `ALREADY_EXISTS`, `INTERNAL`.
+All error responses use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details with types: `INVALID_ARGUMENT`, `NOT_FOUND`, `ALREADY_EXISTS`, `INTERNAL`.
+
+> **BREAKING (v0):** Error type URIs migrated from reserved `dcm.example.com` domain to project-controlled `dcm-project.github.io/problems` namespace.
 
 ## Development
 
