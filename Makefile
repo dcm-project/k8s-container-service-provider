@@ -38,7 +38,7 @@ test-cover:
 lint:
 	golangci-lint run ./...
 
-check: fmt vet lint test
+check: fmt vet lint test check-problem-uris
 
 tidy:
 	go mod tidy
